@@ -351,12 +351,72 @@ the prefix is the measured improvement in ranking among real candidate passages 
 
 ---
 
-### 0.4 Remaining
+### 0.4 Python environment
 
-- [ ] Python environment via `uv`, pinned to a version with solid ML wheel coverage
-- [ ] `nbstripout` registered as a git filter — **before** the first notebook exists.
-      Notebook *outputs* capture retrieved journal excerpts and are saved inside the
-      tracked `.ipynb`. `.gitignore` cannot help; the notebook is meant to be tracked.
+Python **3.14** — chosen by testing, not reputation. The whole dependency set resolves
+*and* installs from prebuilt wheels on 3.14 with nothing compiled from source:
+
+```bash
+uv pip compile reqs.in --python-version 3.14   # 109 packages, resolves
+uv pip install -r reqs.in                      # no "Building" lines = all wheels
+```
+
+Earlier advice to pin 3.12 "to avoid ML wheel gaps" was stale and was dropped. Verify
+rather than assume; the ecosystem moves.
+
+```bash
+uv init --bare --python 3.14
+uv add lancedb python-docx mammoth pyyaml pandas rank-bm25 httpx \
+       jupyterlab ipykernel nbstripout
+uv run python -c "import lancedb, docx, pandas; print('env ok')"
+```
+
+`uv run` activates the environment automatically — no `source .venv/bin/activate`.
+
+**Commit `uv.lock`.** It pins exact versions and is what makes the environment
+reproducible on another machine.
+
+**LanceDB over Chroma:** Chroma sends anonymized usage telemetry by default. It can be
+disabled, but "remember to turn off the phoning-home" is a poor fit for a project whose
+premise is that nothing leaves the machine. A privacy-posture call, not a performance
+one.
+
+---
+
+### 0.5 nbstripout — the leak vector `.gitignore` cannot cover
+
+Notebook *outputs* are stored inside the `.ipynb` file. Print a retrieved journal entry
+in a notebook and that text is now in a file you legitimately want to track.
+`.gitignore` is no help — the notebook itself should be committed; only its outputs are
+toxic.
+
+```bash
+uv run nbstripout --install --attributes .gitattributes
+```
+
+This writes a clean filter into `.git/config` and registers `*.ipynb` in
+`.gitattributes`.
+
+**Verify it, don't trust it.** Stage a notebook containing a marker string and inspect
+what git actually recorded:
+
+```bash
+git add notebook.ipynb
+git show :notebook.ipynb | grep MARKER   # should find nothing
+```
+
+Confirmed here: text present on disk, `outputs: []` and `execution_count: None` in the
+staged blob.
+
+> **Gap to know about:** the filter definition lives in `.git/config`, which is **not
+> committed**. `.gitattributes` alone does not protect a fresh clone — with no filter
+> defined, git passes content through unstripped and says nothing. Re-run
+> `uv run nbstripout --install` after every clone, on every machine.
+
+---
+
+### 0.6 Remaining
+
 - [ ] Pre-commit hook rejecting journal file types
 - [ ] Disable editor/library telemetry
 
