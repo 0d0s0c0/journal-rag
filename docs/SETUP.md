@@ -270,8 +270,61 @@ curl -s http://localhost:11434/api/embed \
 ```
 
 The array of floats that comes back *is* the core idea of the project: text converted
-into a point in high-dimensional space, where "outstanding meal" and "the uni ruined me
-for all other sea urchin" land near each other despite sharing no words.
+into a point in high-dimensional space — 1024 dimensions for this model. Retrieval is
+just "find the nearest points."
+
+#### Gotcha: Qwen3-Embedding requires an instruction prefix on queries
+
+Qwen3-Embedding is *instruction-aware*. Without a task prefix on the query, asymmetric
+retrieval — short query against longer passage — degrades badly, and nothing warns you.
+
+Measured against three toy sentences, query `"outstanding food I had"`:
+
+```
+WITHOUT instruction prefix   (spread: 0.0523)
+  0.5807  we ate a forgettable sandwich at the airport
+  0.5293  the uni in Vladero ruined me for all other sea urchin
+  0.5285  the hotel wifi was down all morning
+
+WITH instruction prefix      (spread: 0.1900)
+  0.4384  we ate a forgettable sandwich at the airport
+  0.4309  the uni in Vladero ruined me for all other sea urchin
+  0.2484  the hotel wifi was down all morning
+```
+
+Without the prefix everything sits inside a 0.05 band — the model barely separates
+"sea urchin" from "wifi was down". That is not working retrieval, and built upon
+naively it yields mediocre results with no visible cause. With the prefix the spread
+nearly quadruples and the irrelevant entry falls away cleanly.
+
+Prefix format:
+
+```
+Instruct: {task description}
+Query: {the actual query}
+```
+
+**Applies to queries only, not to the documents being indexed.** Stored passages are
+embedded bare. Getting this backwards silently degrades the whole index.
+
+#### Finding: embeddings capture topic, not valence
+
+Even with the prefix, `"forgettable sandwich"` (0.4384) still scores *above*
+`"the uni ruined me for all other sea urchin"` (0.4309). Both are about food, and the
+embedding model does not encode that one is praise and the other a complaint.
+
+Consequence for this project: the motivating question — *"what were some outstanding
+foods I had?"* — **cannot be answered by vector search alone**. Retrieval surfaces
+food-related entries; judging which were *good* has to come from the LLM reading them
+(Phase 4) or from the structured extraction pass (Phase 5).
+
+This is a sharper form of the two-query-types argument in the README: semantic search
+finds *subject matter*, not *judgment*.
+
+> Evidence caveat: three toy sentences. Real journal entries are longer and more
+> distinctive, which generally helps. The instruction-prefix effect is solid and
+> reproducible; the valence finding should be re-tested against the real corpus in
+> Phase 3.
 
 ---
 

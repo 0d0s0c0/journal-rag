@@ -21,8 +21,21 @@ paths:
 # Local model server. Nothing here talks to the internet.
 ollama:
   host: http://localhost:11434
-  chat_model: TBD             # set in Phase 0
-  embed_model: TBD            # set in Phase 0
+  chat_model: gemma4:12b
+  embed_model: qwen3-embedding:0.6b
+
+embedding:
+  dimensions: 1024            # qwen3-embedding:0.6b output size
+
+  # Qwen3-Embedding is INSTRUCTION-AWARE. Queries must carry a task prefix or
+  # retrieval quality collapses silently — measured spread across candidates
+  # went from 0.05 (unusable) to 0.19 just by adding it. See docs/SETUP.md.
+  #
+  # Applies to QUERIES ONLY. Documents are embedded bare. Getting this
+  # backwards degrades the entire index with no error.
+  query_instruction: >-
+    Given a search query, retrieve relevant passages from a personal travel journal
+  query_template: "Instruct: {instruction}\nQuery: {query}"
 
 # Phase 2 — chunking. We chunk by journal entry, not by character
 # count; these are the fallback bounds for unusually long entries.
