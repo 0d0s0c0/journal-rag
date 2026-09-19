@@ -81,7 +81,9 @@ Everything runs offline: models served locally by Ollama, vector DB on disk, no 
 calls, no telemetry. To be verified rather than assumed — by disabling library analytics
 explicitly and by pulling the network mid-query in Phase 4.
 
-**No journal content is committed to this repo, ever.** The repo is public.
+**No journal content is committed to this repo, ever.** It is private while under
+construction and intended to go public — so the rule holds from the first commit, not
+from whenever the switch is flipped.
 
 ### Layout
 
