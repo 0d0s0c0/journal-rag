@@ -124,14 +124,18 @@ Derived artifacts don't look like journals but contain the text verbatim:
 
 ## Steps
 
+Exact commands, rationale, and the problems hit along the way are recorded in
+[`docs/SETUP.md`](docs/SETUP.md) — written to be re-runnable on a fresh machine.
+
 ### Phase 0 — Environment
 
 - [x] `git init`; commit `.gitignore` **first**, before any data is nearby
 - [x] Create `journal-data/` as a sibling; confirm `git status` stays clean
-- [ ] Install `uv` and `ollama`
-- [ ] Pin a Python version known to have wheels for the ML stack; create the venv
-- [ ] Choose and pull a chat model and an embedding model
+- [x] Install `uv` and `ollama`
+- [x] Choose and pull a chat model and an embedding model
+      (`gemma4:12b`, `qwen3-embedding:0.6b`)
 - [ ] Smoke test: one chat completion, one embedding; check throughput
+- [ ] Pin a Python version known to have wheels for the ML stack; create the venv
 - [ ] Install `nbstripout`, register as a git filter (before the first notebook exists)
 - [ ] Add pre-commit hook rejecting journal file types
 - [ ] Turn off editor/library telemetry
