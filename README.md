@@ -41,6 +41,15 @@ disappoint on a real archive. Phases 1–4 build the semantic path and the funda
 **Phase 5** — metadata filtering, keyword search fused with vectors, and an offline
 extraction pass into a structured facts table — is what makes the second kind work.
 
+There is a sharper edge to (1) than it first appears, measured during setup:
+**embeddings capture topic, not valence.** "We ate a forgettable sandwich at the
+airport" scores *higher* against the query "outstanding food I had" than "the uni in
+Vladero ruined me for all other sea urchin" does. Both are about food; the vector
+space does not encode which one is praise. So even the semantic path only narrows to
+*subject matter* — deciding which meals were actually good falls to the LLM reading
+the entries, or to the structured extraction in Phase 5. See
+[`docs/SETUP.md`](docs/SETUP.md) for the numbers.
+
 ## Architecture
 
 ```
