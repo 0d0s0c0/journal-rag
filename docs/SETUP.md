@@ -159,8 +159,12 @@ Diagnose and clear it:
 ```bash
 lsof -nP -iTCP:11434          # shows the PID still holding the port
 pgrep -fl ollama              # parent `ollama serve` plus any llama-server child
-pkill -f "ollama serve"       # kill -9 <pid> if stubborn
+pkill -f "ollama serve"       # SIGTERM — observed here NOT to be enough
+lsof -t -nP -iTCP:11434 | xargs -r kill -9   # SIGKILL; this worked
 ```
+
+The wedged process ignores SIGTERM, so expect to need SIGKILL. The `llama-server`
+child terminates with its parent — no orphan to clean up separately.
 
 `scripts/ollama-serve.sh` checks for a live server before starting and reports it
 clearly instead of surfacing the raw bind error — but it can't detect this case, where
