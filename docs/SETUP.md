@@ -144,6 +144,28 @@ curl -s http://localhost:11434/api/version
 # {"version":"0.34.2"}
 ```
 
+#### Gotcha: Ctrl-C can leave the port bound
+
+Ctrl-C does not always terminate `ollama serve` cleanly — it can wedge mid-shutdown,
+still holding the socket but no longer answering requests. The next start then fails
+with:
+
+```
+Error: listen tcp 127.0.0.1:11434: bind: address already in use
+```
+
+Diagnose and clear it:
+
+```bash
+lsof -nP -iTCP:11434          # shows the PID still holding the port
+pgrep -fl ollama              # parent `ollama serve` plus any llama-server child
+pkill -f "ollama serve"       # kill -9 <pid> if stubborn
+```
+
+`scripts/ollama-serve.sh` checks for a live server before starting and reports it
+clearly instead of surfacing the raw bind error — but it can't detect this case, where
+the port is held by a process that no longer responds.
+
 ---
 
 ### 0.2 Pull models
@@ -167,6 +189,43 @@ bounded partly by how many retrieved entries fit in the prompt.
 
 Candidate for the Phase 6 comparison: `gemma4:26b` (19 GB) is mixture-of-experts with
 only 4B active parameters, so it runs far faster than its size implies.
+
+#### Gotcha: Ollama does not use the model's full context by default
+
+A model advertising 256K does **not** mean you get 256K. Ollama loads with a
+conservative default — observed here by inspecting the running process:
+
+```bash
+pgrep -fl llama-server
+# …llama-server --model …gemma4… -c 32768 …
+```
+
+`-c 32768` — 32K, not 256K, despite gemma4 supporting the larger window.
+
+This is a classic RAG failure mode. You retrieve ten entries, assemble a prompt that
+exceeds the loaded window, and the model silently sees only part of it. **No error is
+raised** — you just get a confidently wrong answer built from truncated context, and
+nothing in the output indicates anything was dropped.
+
+The fix is to set `num_ctx` explicitly in the API request options (or via a Modelfile)
+rather than relying on the default:
+
+```json
+{ "model": "gemma4:12b", "prompt": "...", "options": { "num_ctx": 65536 } }
+```
+
+Do this in Phase 4 and keep the value in `config.yaml`.
+
+Bigger is not automatically better: the KV cache grows with context length and is
+usually the real memory ceiling, not the weights — which is what
+`OLLAMA_KV_CACHE_TYPE=q8_0` in the serve script exists to mitigate. Size `num_ctx`
+against the actual volume of retrieved chunks, which Phase 3 will reveal.
+
+**Worth verifying rather than assuming**, whenever answers look oddly incomplete:
+
+```bash
+pgrep -fl llama-server | grep -o '\-c [0-9]*'
+```
 
 **Embeddings — `qwen3-embedding:0.6b`** (639 MB, 32K context, Apache 2.0). Small, fast,
 from the family that topped the MTEB multilingual leaderboard.
