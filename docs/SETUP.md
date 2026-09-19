@@ -275,8 +275,12 @@ just "find the nearest points."
 
 #### Gotcha: Qwen3-Embedding requires an instruction prefix on queries
 
-Qwen3-Embedding is *instruction-aware*. Without a task prefix on the query, asymmetric
-retrieval — short query against longer passage — degrades badly, and nothing warns you.
+Qwen3-Embedding is *instruction-aware*: a short task description prepended to the query
+steers where the text lands in vector space. Without it, discrimination between
+candidate passages degrades badly, and nothing warns you.
+
+The prefix is not cosmetic — the same query embedded bare vs. prefixed gives
+`cos = 0.60`, i.e. a substantially different vector.
 
 Measured against three toy sentences, query `"outstanding food I had"`:
 
@@ -325,6 +329,25 @@ finds *subject matter*, not *judgment*.
 > distinctive, which generally helps. The instruction-prefix effect is solid and
 > reproducible; the valence finding should be re-tested against the real corpus in
 > Phase 3.
+
+#### Tested and *not* supported: the "query/passage asymmetry" story
+
+The common explanation for instruction prefixes is that queries otherwise cluster with
+other *queries* rather than with the passages that answer them, and the prefix corrects
+this. Tested directly, that did not reproduce with this model:
+
+```
+bare query   vs similar question: 0.6718   vs answer passage: 0.5293  -> closer to the QUESTION
+with prefix  vs similar question: 0.6450   vs answer passage: 0.4309  -> closer to the QUESTION
+```
+
+The prefix never flipped the ordering. It is also a badly-posed test: a real index
+contains only journal entries, never questions, so a query's similarity to another
+question is not a competitor that exists in practice.
+
+Recorded here so the mechanism isn't repeated as fact. **The justification for using
+the prefix is the measured improvement in ranking among real candidate passages above
+— not this story.**
 
 ---
 
