@@ -126,8 +126,8 @@ Derived artifacts don't look like journals but contain the text verbatim:
 
 ### Phase 0 — Environment
 
-- [ ] `git init`; commit `.gitignore` **first**, before any data is nearby
-- [ ] Create `journal-data/` as a sibling; confirm `git status` stays clean
+- [x] `git init`; commit `.gitignore` **first**, before any data is nearby
+- [x] Create `journal-data/` as a sibling; confirm `git status` stays clean
 - [ ] Install `uv` and `ollama`
 - [ ] Pin a Python version known to have wheels for the ML stack; create the venv
 - [ ] Choose and pull a chat model and an embedding model
