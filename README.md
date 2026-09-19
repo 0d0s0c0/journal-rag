@@ -143,9 +143,9 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 - [x] Install `uv` and `ollama`
 - [x] Choose and pull a chat model and an embedding model
       (`gemma4:12b`, `qwen3-embedding:0.6b`)
-- [ ] Smoke test: one chat completion, one embedding; check throughput
-- [ ] Pin a Python version known to have wheels for the ML stack; create the venv
-- [ ] Install `nbstripout`, register as a git filter (before the first notebook exists)
+- [x] Smoke test: one chat completion, one embedding; check throughput
+- [x] Python environment via `uv` (3.14 — verified by install, not assumed)
+- [x] Install `nbstripout`, register as a git filter (before the first notebook exists)
 - [ ] Add pre-commit hook rejecting journal file types
 - [ ] Turn off editor/library telemetry
 
