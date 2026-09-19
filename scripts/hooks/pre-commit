@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#
+# Last-resort guard against committing journal content to a repo intended to go
+# public. Earlier defenses (data living outside the repo, .gitignore, nbstripout)
+# handle the normal cases; this catches the mistake they don't — `git add -A` at
+# the wrong moment, or a fresh clone where nbstripout was never installed.
+#
+# Installed via:  git config core.hooksPath scripts/hooks
+# Bypass (think first):  git commit --no-verify
+#
+set -uo pipefail
+
+RED='\033[0;31m'; YEL='\033[0;33m'; NC='\033[0m'
+fail=0
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# ── 1. Journal source formats and derived artifacts ──────────────────────────
+# .txt is included because converted journals land as .txt. Use .md for prose
+# that genuinely belongs in the repo.
+BLOCKED_EXT='\.(doc|docx|rtf|odt|pages|pdf|txt|db|sqlite|sqlite3|lance|parquet|npy|pkl)$'
+BLOCKED_DIR='(^|/)(data|journals|journal-data|index|embeddings|eval|logs|cache)/'
+
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if [[ "$f" =~ $BLOCKED_EXT ]]; then
+    printf "${RED}BLOCKED${NC}  %s  (journal format or derived artifact)\n" "$f"
+    fail=1
+  elif [[ "$f" =~ $BLOCKED_DIR ]]; then
+    printf "${RED}BLOCKED${NC}  %s  (path reserved for journal data)\n" "$f"
+    fail=1
+  fi
+done <<< "$staged"
+
+# ── 2. Notebooks with outputs ────────────────────────────────────────────────
+# nbstripout normally prevents this, but its filter lives in .git/config, which
+# is not committed — a fresh clone has no protection until it is re-installed.
+# Check what git ACTUALLY staged, not what is on disk.
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  [[ "$f" =~ \.ipynb$ ]] || continue
+  if git show ":$f" 2>/dev/null | python3 -c "
+import json, sys
+try:
+    nb = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)                      # unparseable: not our problem here
+sys.exit(1 if any(c.get('outputs') for c in nb.get('cells', [])) else 0)
+"; then :; else
+    printf "${RED}BLOCKED${NC}  %s  (notebook has saved outputs — may contain journal text)\n" "$f"
+    printf "          run: uv run nbstripout --install\n"
+    fail=1
+  fi
+done <<< "$staged"
+
+# ── 3. Large files, a weak proxy for "this is data, not code" ────────────────
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  size=$(git cat-file -s "$(git rev-parse ":$f" 2>/dev/null)" 2>/dev/null || echo 0)
+  if [ "$size" -gt 5242880 ]; then
+    printf "${YEL}WARNING${NC}  %s is %s MB — is this really code?\n" "$f" "$((size / 1048576))"
+  fi
+done <<< "$staged"
+
+if [ "$fail" -ne 0 ]; then
+  printf "\n${RED}Commit blocked.${NC} This repo is intended to go public and must never\n"
+  printf "contain journal content. Journals belong in ../journal-data/.\n\n"
+  printf "If this is genuinely a false positive:  git commit --no-verify\n"
+  exit 1
+fi
+
+exit 0

@@ -415,9 +415,55 @@ staged blob.
 
 ---
 
-### 0.6 Remaining
+### 0.6 Pre-commit hook
 
-- [ ] Pre-commit hook rejecting journal file types
+`scripts/hooks/pre-commit` is the last backstop, for the mistake the other layers miss:
+`git add -A` at the wrong moment, or a fresh clone with no local protections. It blocks
+three things and warns on a fourth:
+
+1. Journal formats and derived artifacts by extension
+   (`.doc .docx .rtf .odt .pages .pdf .txt .db .sqlite .lance .parquet .npy .pkl`)
+2. Paths reserved for data (`data/ journals/ index/ embeddings/ eval/ logs/ cache/`)
+3. Notebooks whose **staged blob** still contains outputs
+4. Warns on any staged file over 5 MB — a weak proxy for "this is data, not code"
+
+Installed via `core.hooksPath`, so the hook lives in the tree and is version
+controlled, unlike `.git/hooks/`.
+
+#### After cloning, run this — nothing else installs it
+
+```bash
+./scripts/setup-repo.sh
+```
+
+Both protections live in `.git/config`, which is **not committed**. A fresh clone has
+neither until this is run.
+
+#### Verified, not assumed
+
+| Test | Result |
+| --- | --- |
+| `git add -f "Japan 2019.docx"` → commit | **blocked** |
+| Notebook with outputs, no filter configured | **blocked** by hook |
+| Notebook with outputs, filter configured | never even stages (see below) |
+| Ordinary source file | commits normally |
+
+#### Finding: `filter.nbstripout.required = true` is stronger than expected
+
+With the filter configured, a notebook whose clean filter fails is **refused at
+`git add`** outright — `fatal: t.ipynb: clean filter 'nbstripout' failed`. It never
+reaches the index, so the hook never sees it.
+
+That is good, but it is exactly why the fresh-clone case needed separate testing: with
+*no* `filter.nbstripout.*` config at all, `required` does not exist either, git passes
+the notebook through silently, and only the hook stands between outputs and history.
+Simulated with `git config --remove-section filter.nbstripout` and confirmed the hook
+catches it.
+
+---
+
+### 0.7 Remaining
+
 - [ ] Disable editor/library telemetry
 
 ---
