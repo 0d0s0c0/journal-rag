@@ -41,6 +41,13 @@ retrieval:
 
 # Phase 4 — generation.
 generation:
+  # Ollama loads models with a conservative default context (~32K observed),
+  # NOT the model's full capability (gemma4 supports 256K). Exceeding the
+  # loaded window truncates the prompt SILENTLY — no error, just a wrong
+  # answer from partial context. Always set this explicitly.
+  # Bigger isn't free: the KV cache grows with context. Size it against the
+  # actual retrieved-chunk volume measured in Phase 3.
+  num_ctx: 32768
   temperature: 0.2            # low: recall, not creative writing
   cite_sources: true
   refuse_when_unsupported: true # say "not in the journals" over guessing
