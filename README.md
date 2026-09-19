@@ -146,8 +146,12 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 - [x] Smoke test: one chat completion, one embedding; check throughput
 - [x] Python environment via `uv` (3.14 — verified by install, not assumed)
 - [x] Install `nbstripout`, register as a git filter (before the first notebook exists)
-- [ ] Add pre-commit hook rejecting journal file types
+- [x] Add pre-commit hook rejecting journal file types
 - [ ] Turn off editor/library telemetry
+
+> **After cloning, run `./scripts/setup-repo.sh`.** The nbstripout filter and the
+> hooks path live in `.git/config`, which is not committed — a fresh clone has no
+> protection until you run it.
 
 ### Phase 1 — Ingestion
 
