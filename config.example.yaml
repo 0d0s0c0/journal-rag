@@ -1,0 +1,46 @@
+# ─────────────────────────────────────────────────────────────
+# Copy to config.yaml and edit. config.yaml is gitignored so the
+# real path to your journals never enters this public repo.
+#
+#     cp config.example.yaml config.yaml
+# ─────────────────────────────────────────────────────────────
+
+# Everything derived from your journals lives under this root.
+# It sits as a SIBLING of the repo, not inside it — git cannot see
+# it, so it cannot leak it. (Verified that ~/playground is not
+# itself a git repo; if it were, this would be inside one.)
+data_root: ~/playground/journal-data
+
+paths:
+  raw: ${data_root}/raw       # original .doc / .docx, never modified
+  text: ${data_root}/text     # converted plain text
+  index: ${data_root}/index   # vector database
+  facts: ${data_root}/facts.db # extracted structured facts (Phase 5)
+  eval: ${data_root}/eval     # evaluation question sets (Phase 6)
+
+# Local model server. Nothing here talks to the internet.
+ollama:
+  host: http://localhost:11434
+  chat_model: TBD             # set in Phase 0
+  embed_model: TBD            # set in Phase 0
+
+# Phase 2 — chunking. We chunk by journal entry, not by character
+# count; these are the fallback bounds for unusually long entries.
+chunking:
+  max_chars: 2000
+  overlap: 200
+  prepend_context: true       # stamp date + location onto each chunk
+                              # so it is interpretable on its own
+
+# Phase 3/5 — retrieval.
+retrieval:
+  top_k: 5
+  hybrid: false               # true from Phase 5 (vectors + BM25)
+  bm25_weight: 0.4
+  use_metadata_filter: true   # year/date filters parsed from question
+
+# Phase 4 — generation.
+generation:
+  temperature: 0.2            # low: recall, not creative writing
+  cite_sources: true
+  refuse_when_unsupported: true # say "not in the journals" over guessing

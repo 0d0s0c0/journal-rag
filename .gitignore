@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────
+# This repo is PUBLIC. No journal content may ever be committed.
+#
+# Primary defense is that journals live OUTSIDE this repo entirely
+# (see PLAN.md → "Hard constraint: this repo will be public").
+# Everything here is a backstop for mistakes.
+#
+# NOTE: .gitignore does NOT untrack an already-tracked file.
+# If something slips in, remove it from history BEFORE pushing.
+# ─────────────────────────────────────────────────────────────
+
+# ── Journal source documents ─────────────────────────────────
+data/
+journals/
+journal-data/
+*.doc
+*.docx
+*.rtf
+*.odt
+*.pages
+*.pdf
+
+# Converted journals land as .txt — blanket-ignore is safer than
+# enumerating. Use .md for anything that SHOULD be committed.
+*.txt
+
+# ── Derived artifacts that embed journal text verbatim ───────
+# The vector index stores original chunk text alongside each
+# embedding — it is effectively a copy of the journals.
+*.db
+*.sqlite
+*.sqlite3
+*.lance
+.lancedb/
+chroma/
+.chroma/
+index/
+embeddings/
+*.parquet
+*.npy
+*.pkl
+manifest.csv
+eval/
+cache/
+.cache/
+logs/
+*.log
+
+# ── Notebooks ────────────────────────────────────────────────
+# Outputs capture retrieved journal excerpts and are saved INSIDE
+# the .ipynb file. .gitignore can't help — the notebook is meant
+# to be tracked. Use nbstripout as a git filter to clear outputs.
+.ipynb_checkpoints/
+
+# ── Private working docs (README.md is the tracked one) ──────
+PLAN.md
+
+# ── Local config containing the real data path ───────────────
+config.yaml
+.env
+.env.*
+!.env.example
+
+# ── Python ───────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# ── macOS / editors ──────────────────────────────────────────
+.DS_Store
+.vscode/settings.json
