@@ -55,6 +55,10 @@ the entries, or to the structured extraction in Phase 5. See
 ```
 .doc/.docx  ──►  clean text  ──►  entry-level chunks + metadata
                                           │
+   photos  ──►  EXIF (date, GPS)  ────────┤
+      │         offline geocode           │
+      └──►  vision captions ──────────────┤
+            (gemma4, batch)               │
                         ┌─────────────────┼─────────────────┐
                         ▼                 ▼                 ▼
                   vector index      keyword index      facts table
@@ -68,8 +72,49 @@ the entries, or to the structured extraction in Phase 5. See
                           local LLM (Ollama)
                                  │
                                  ▼
-                     answer + citations to entries
+          answer + citations to entries + photo paths
 ```
+
+## Photos
+
+Journals come with photographs, and they are not decoration — they carry data the
+prose does not.
+
+**EXIF is the highest-value piece of this entire project, and it needs no AI.** Every
+photo carries `DateTimeOriginal` and usually GPS coordinates. That is a *verified*
+travel timeline — dates, cities, countries — independent of whether anything was
+written down, and it directly solves the weakness identified above: "where did I travel
+in 2019" needs hard structured data, and photo EXIF is exactly that. It cannot be vague
+or misremembered, and it cross-checks the text: if the writing says "Tuesday" and the
+photos say June 14, the photos win.
+
+> **Reverse geocoding must be offline.** Turning coordinates into place names via
+> Google or Nominatim would transmit the GPS location of everywhere you have been,
+> including home. Use the `reverse_geocoder` package, which ships a local cities
+> database. This is the single easiest way to accidentally undo the privacy premise of
+> the project.
+
+**Vision captioning** is the second tier. `gemma4:12b` already reports `vision`
+capability with a CLIP projector — no extra model to download. Run each photo through
+it once, offline, and store the description ("a bowl of pho with herbs, street-side
+plastic stools") as text embedded alongside journal chunks. Photos then become
+searchable in the same vector space as the writing, with no separate image-embedding
+infrastructure.
+
+It also does OCR, which matters more than it sounds: restaurant signs, menus, receipts,
+train tickets. "Pho Thin" may exist only on a shopfront in a photograph and never in
+the text.
+
+**Association** — linking a photo to the entry it belongs to — depends on where the
+photos live:
+
+| Photos are… | Linking method | Quality |
+| --- | --- | --- |
+| Embedded in the `.docx` | Document position — the image sits next to its text | Free and exact |
+| Separate files | EXIF timestamp → same-day entry | Good, looser |
+
+Practical notes: iPhone photos are usually **HEIC** and need `pillow-heif` to read; and
+any photo shared with "remove location data" has no GPS.
 
 ## Stack
 
@@ -156,7 +201,10 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 ### Phase 1 — Ingestion
 
 - [ ] Inventory the journals: count, date range, how they're organized
+- [ ] Inventory photos: where they live, formats (HEIC?), whether embedded in the docs
 - [ ] Convert `.docx` (python-docx / mammoth), preserving headings
+- [ ] Extract embedded images from `.docx`, recording their position in the document
+      (position = which text the photo belongs to, for free)
 - [ ] Convert legacy `.doc` via `textutil`
 - [ ] Quality pass: encodings, dropped tables, lost bullets
 - [ ] Write a manifest; flag anything that converted badly
@@ -167,7 +215,10 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
-- [ ] Extract a date for every chunk; flag undated ones for review
+- [ ] Read photo EXIF: `DateTimeOriginal` + GPS → offline reverse geocode to
+      city/country. No AI needed; produces a verified travel timeline.
+- [ ] Extract a date for every chunk; flag undated ones for review — photo EXIF is the
+      tiebreaker when the prose is vague
 - [ ] Attach metadata: `date`, `year`, `month`, `source_file`, `trip`, `entry_title`
 - [ ] Prepend context to chunk text so each is interpretable alone
       ("2019-06-14, Strelsau — the noodles were incredible")
@@ -195,7 +246,10 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 - [ ] Add BM25 keyword search; fuse rankings with vectors
 - [ ] Offline extraction pass: run the local LLM over every entry once, pulling
       `{date, country, city, dishes, restaurants, people}` into SQLite
+- [ ] Load photo EXIF (dates, coordinates, place names) into the facts table — this is
+      ground truth for "where was I when", stronger than anything parsed from prose
 - [ ] Route by question type: aggregation → facts table, open recall → hybrid search
+- [ ] Return photo paths alongside answers, linked by document position or timestamp
 
 *Where this stops being a tutorial and becomes useful.*
 
@@ -208,10 +262,11 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 
 ### Phase 7 — Interface
 
-- [ ] CLI first
-- [ ] Local web UI: chat box, citations that open the source entry
-- [ ] Extras: map of destinations, timeline, "on this day N years ago",
-      incremental re-indexing
+- [ ] CLI first — answers cite entry dates and print photo file paths
+- [ ] Local web UI: chat box, citations that open the source entry, photo thumbnails
+      shown inline (the terminal can't, a browser can)
+- [ ] Extras: map of destinations (EXIF GPS makes this nearly free), timeline,
+      "on this day N years ago", incremental re-indexing
 
 #### The delivery fork: local UI, or connect to a hosted assistant?
 
@@ -236,3 +291,21 @@ for no gain over MCP.
 **Middle path:** use the local model as a *router*. It reads each question first, and
 only ones classified non-sensitive get escalated. Keeps the default private and makes
 the exception deliberate.
+
+### Phase 8 — Vision captioning (enhancement)
+
+Deliberately last. EXIF (Phase 2) delivers most of the value photos have to offer at a
+fraction of the cost, and it should be proven useful before spending compute on every
+image in the archive.
+
+- [ ] Batch-caption every photo with `gemma4:12b` — already downloaded, already
+      `vision`-capable with a CLIP projector, no extra model required
+- [ ] Capture OCR text in the same pass: restaurant signs, menus, receipts, tickets.
+      A place name may exist *only* on a shopfront in a photo and nowhere in the prose.
+- [ ] Embed captions alongside journal chunks so photos are searchable in the same
+      vector space — no separate image-embedding infrastructure
+- [ ] Spot-check caption quality before trusting it; a wrong caption is a false memory
+      inserted into your own archive, which is worse than no caption
+
+A one-off batch job: slow to run, instant to query. Same shape as the Phase 5
+extraction pass, and worth running on a sample first to estimate total time.
