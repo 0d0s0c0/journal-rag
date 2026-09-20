@@ -7,7 +7,6 @@ dependencies = [
     "ipykernel>=7.3.0",
     "jupyterlab>=4.6.3",
     "lancedb>=0.39.0",
-    "mammoth>=1.12.2",
     "nbstripout>=0.9.1",
     "pandas>=3.0.6",
     "python-docx>=1.2.0",

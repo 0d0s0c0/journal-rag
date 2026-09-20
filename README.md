@@ -290,10 +290,11 @@ sampling — so treat them as timeline evidence only for now.
 - [ ] Inventory media: counts per year/place, formats (HEIC needs `pillow-heif`)
 - [x] Determine link type: **external hyperlinks** (Word Insert → Link), extracted by
       `src/docx_links.py` — verified against a synthetic journal
-- [ ] Convert `.docx` (python-docx / mammoth), preserving headings
+- [ ] Convert `.docx` via python-docx (paragraphs only — the journals carry no
+      formatting, so there is no structure to preserve beyond paragraph breaks)
 - [ ] Extract embedded images and link targets, recording position in the document
 - [ ] Convert legacy `.doc` via `textutil`
-- [ ] Quality pass: encodings, dropped tables, lost bullets
+- [ ] Quality pass: encodings, stray artifacts, entries the date regex missed
 - [ ] Write a manifest; flag anything that converted badly
 
 *The least glamorous, highest-leverage phase. Garbage here poisons everything downstream.*
@@ -338,6 +339,10 @@ We took the boat…
 **Body paragraphs also use two carriage returns**, which means this structural rule
 does *not* work: `date / 2CR / X / 2CR / Y` is genuinely ambiguous, and X could be a
 title or a first paragraph. No layout rule can separate them.
+
+**The journals carry no formatting at all** — no bold, no headings, no styles. So
+formatting was never going to be a usable signal, and the archive's entire structure
+reduces to one rule: **a date line starts a new entry; everything else is text.**
 
 **Decision: don't classify at all.** The title is treated as part of the entry.
 
