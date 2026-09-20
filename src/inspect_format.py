@@ -1,11 +1,13 @@
-"""Probe a journal .docx for structure without disclosing its content.
+"""Probe journal .doc/.docx files for structure without disclosing content.
 
 Answers the questions the parser needs answered — are date lines detectable,
 are titles visually distinct, how consistent is the formatting — while printing
 only counts, style names and character lengths. No journal text is emitted.
 
     uv run python -m src.inspect_format "<file.docx>"
-    uv run python -m src.inspect_format "<dir>"     # every .docx within
+    uv run python -m src.inspect_format "<dir>"     # every .doc/.docx within
+
+Legacy .doc is converted via macOS textutil; originals are never modified.
 
 Output is safe to share.
 """
@@ -13,7 +15,9 @@ Output is safe to share.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -39,14 +43,14 @@ def _fmt(par) -> str:
     return "+".join(str(b) for b in bits)
 
 
-def probe(path: Path) -> None:
+def probe(path: Path, display: str | None = None) -> None:
     doc = Document(str(path))
     pars = doc.paragraphs
 
     date_idx = [i for i, p in enumerate(pars) if DATE_RE.match(p.text or "")]
     nonempty = [p for p in pars if (p.text or "").strip()]
 
-    print(f"\n=== {path.name} ===")
+    print(f"\n=== {display or path.name} ===")
     print(f"paragraphs        : {len(pars)}  ({len(nonempty)} non-empty)")
     print(f"date lines found  : {len(date_idx)}")
 
@@ -114,19 +118,52 @@ def _bucket(n: int) -> str:
     return "long"
 
 
+def _as_docx(path: Path, tmp: Path) -> Path:
+    """Legacy .doc -> .docx via macOS textutil, into a scratch dir.
+
+    python-docx cannot read the old binary format at all. textutil ships with
+    macOS and handles it, so no extra dependency. The converted copy is
+    temporary; originals are never touched.
+    """
+    if path.suffix.lower() != ".doc":
+        return path
+    out = tmp / (path.stem + ".docx")
+    subprocess.run(
+        ["textutil", "-convert", "docx", str(path), "-output", str(out)],
+        check=True, capture_output=True,
+    )
+    return out
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     target = Path(sys.argv[1]).expanduser()
-    files = sorted(target.rglob("*.docx")) if target.is_dir() else [target]
+
+    if target.is_dir():
+        files = sorted(
+            f for pat in ("*.docx", "*.doc", "*.DOCX", "*.DOC")
+            for f in target.rglob(pat)
+        )
+    else:
+        files = [target]
     files = [f for f in files if not f.name.startswith("~$")]  # Word lock files
     if not files:
-        sys.exit("no .docx files found")
-    for f in files:
-        try:
-            probe(f)
-        except Exception as e:                       # keep going across a whole archive
-            print(f"\n=== {f.name} ===\n  ERROR: {type(e).__name__}: {e}")
+        sys.exit("no .doc/.docx files found")
+
+    n_legacy = sum(1 for f in files if f.suffix.lower() == ".doc")
+    print(f"{len(files)} file(s): {len(files) - n_legacy} .docx, {n_legacy} legacy .doc")
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        for f in files:
+            try:
+                probe(_as_docx(f, tmp), display=f.name)
+            except subprocess.CalledProcessError as e:
+                print(f"\n=== {f.name} ===\n  textutil failed: "
+                      f"{e.stderr.decode(errors='replace').strip()[:200]}")
+            except Exception as e:                   # keep going across a whole archive
+                print(f"\n=== {f.name} ===\n  ERROR: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":
