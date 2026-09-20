@@ -286,13 +286,25 @@ sampling — so treat them as timeline evidence only for now.
 The source format is:
 
 ```
-Jun 14   Ha Long Bay
-    We took the boat out early. Two days ago in Strelsau I had
-    the best pho of my life at a place near the station...
+Jun 14                    ← three-letter month + day, own line
+Ha Long Bay               ← optional title, own line
+We took the boat out early. Two days ago in Strelsau I had
+the best pho of my life at a place near the station...
 ```
 
-A three-letter month and day, an optional title, then the entry. Three consequences,
-in increasing order of difficulty.
+A three-letter month and day, an optional title on the following line, then the entry.
+Four consequences, in increasing order of difficulty.
+
+**0. The title is not positionally distinguishable from the body.** Both are "the
+paragraph after the date," so position alone cannot tell them apart. Text heuristics
+(short, no terminal punctuation) are guessable but fool easily — a one-line entry
+such as "Rain all day." looks exactly like a title.
+
+The reliable signal is **formatting**: `.docx` preserves paragraph styles and run
+properties, so a title that is bold, styled as a Heading, or a different size can be
+detected exactly rather than inferred. Expect inconsistency across ten years of
+writing — plan for styled-where-available, heuristic otherwise, with ambiguous cases
+sent to a review list rather than guessed.
 
 **1. No year in the header.** `Jun 14` is ambiguous on its own — but the filename
 carries it (`Ruritania - 2019.docx`), so this is largely solved. File-level metadata is
@@ -327,7 +339,9 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
-- [ ] Parse the `MMM DD` header; take the year from the filename (`<place> - <YYYY>`)
+- [ ] Parse the `MMM DD` line; take the year from the filename (`<place> - <YYYY>`)
+- [ ] Detect the optional title on the following line — prefer paragraph style / bold
+      over text heuristics; send ambiguous cases to a review list, don't guess
 - [ ] Detect year rollover by watching for the month moving backwards (trips crossing
       New Year) — a safety check now, not the primary mechanism
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
