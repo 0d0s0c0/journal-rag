@@ -200,6 +200,10 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 
 ### Phase 1 — Ingestion
 
+- [ ] Get the files onto this machine **without routing them through cloud storage.**
+      Dropbox/Drive/iCloud is the convenient path and would upload the entire archive
+      to a third party — precisely what this project exists to avoid. Use a USB drive,
+      a direct Finder network share, or AirDrop between your own devices.
 - [ ] Inventory the journals: count, date range, how they're organized
 - [ ] Inventory photos: where they live, formats (HEIC?), whether embedded in the docs
 - [ ] Convert `.docx` (python-docx / mammoth), preserving headings
@@ -213,13 +217,58 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 
 ### Phase 2 — Chunking and metadata
 
+The source format is:
+
+```
+Jun 14   Ha Long Bay
+    We took the boat out early. Two days ago in Strelsau I had
+    the best pho of my life at a place near the station...
+```
+
+A three-letter month and day, an optional title, then the entry. Three consequences,
+in increasing order of difficulty.
+
+**1. No year in the header.** `Jun 14` is ambiguous on its own. The year must come from
+the filename, document title, or folder — which makes file-level metadata load-bearing.
+Any file whose year cannot be determined becomes a manual review item rather than a
+guess.
+
+**2. Year rollover.** Entries running `Dec 28` → `Jan 3` cross a year boundary inside a
+single file. Assigning the file's year to every entry would date that January entry
+twelve months early, silently. Process entries in order and increment the year whenever
+the month moves backwards.
+
+**3. Relative dates — the one that breaks the naive model.** "Two days ago in Strelsau I
+had the best pho of my life" means the *event* happened on Jun 12, while the *text*
+lives in the Jun 14 entry.
+
+A chunk therefore cannot have a single date. Ask "what did I eat on June 12?" and a
+system that only knows entry dates searches the Jun 12 entry, finds no pho, and reports
+nothing — while the answer sits two entries later.
+
+**Two date fields, not one:**
+
+| Field | Meaning | Source |
+| --- | --- | --- |
+| `entry_date` | when it was written | the `Jun 14` header |
+| `event_date` | when it actually happened | resolved from the text |
+
+This is a further argument for the Phase 5 extraction pass: resolving "two days ago"
+against a known entry date is exactly what an LLM does well and what regex does badly.
+The extraction prompt must ask for the event date explicitly.
+
+Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resolution.
+
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
+- [ ] Parse the `MMM DD` header; carry the year from file-level metadata
+- [ ] Detect year rollover by watching for the month moving backwards
+- [ ] Flag entries whose year cannot be determined — review, don't guess
 - [ ] Read photo EXIF: `DateTimeOriginal` + GPS → offline reverse geocode to
       city/country. No AI needed; produces a verified travel timeline.
-- [ ] Extract a date for every chunk; flag undated ones for review — photo EXIF is the
-      tiebreaker when the prose is vague
-- [ ] Attach metadata: `date`, `year`, `month`, `source_file`, `trip`, `entry_title`
+- [ ] Record `entry_date` for every chunk; leave `event_date` resolution to Phase 5
+- [ ] Attach metadata: `entry_date`, `year`, `month`, `source_file`, `trip`,
+      `entry_title`
 - [ ] Prepend context to chunk text so each is interpretable alone
       ("2019-06-14, Strelsau — the noodles were incredible")
 
@@ -245,7 +294,11 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 - [ ] Parse year/date ranges from questions; filter *before* semantic ranking
 - [ ] Add BM25 keyword search; fuse rankings with vectors
 - [ ] Offline extraction pass: run the local LLM over every entry once, pulling
-      `{date, country, city, dishes, restaurants, people}` into SQLite
+      `{entry_date, event_date, country, city, dishes, restaurants, people}` into SQLite
+- [ ] **Resolve relative dates** ("two days ago", "last Tuesday", "the night before")
+      against the entry date, and store the result as `event_date`. Facts are indexed
+      by when they *happened*, not by when they were written about.
+- [ ] Cross-check resolved dates against photo EXIF where a photo exists
 - [ ] Load photo EXIF (dates, coordinates, place names) into the facts table — this is
       ground truth for "where was I when", stronger than anything parsed from prose
 - [ ] Route by question type: aggregation → facts table, open recall → hybrid search
