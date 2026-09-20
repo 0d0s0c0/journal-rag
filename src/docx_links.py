@@ -13,7 +13,7 @@ guessing from timestamps.
 Word stores whatever path it was given, so targets appear in several shapes:
 
     2019/Strelsau/IMG_1234.jpg
-    file:///C:/Users/me/Journals/2019/Ha%20Long%20Bay/IMG_9876.jpg
+    file:///C:/Users/me/Journals/2019/Zenda%20Bay/IMG_9876.jpg
     ..\\2019\\Klow\\IMG_0001.jpg
 
 We do not ask Word to resolve these. We parse them and keep the trailing
