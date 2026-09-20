@@ -231,9 +231,24 @@ trips crossing New Year, but the base year is known rather than guessed.
 still works for photos whose GPS was stripped, and it cross-checks EXIF where both
 exist.
 
-**Place folder names are a controlled vocabulary.** A known list of locations to match
-prose mentions against in Phase 5, instead of trusting an LLM to spell places
-consistently across ten years of entries.
+**Place folder names are a vocabulary, but not a geography.** Granularity is
+inconsistent — a folder may be a city (`Strelsau`), a region (`Northmark`), or a country.
+They are *labels for a trip*, useful for display and as a fuzzy matching signal, but
+they cannot be treated as structured location data: "where did I travel in 2019?"
+answered from folder names alone returns a mix of regions and cities.
+
+**EXIF GPS is the only consistent geography in the archive.** Coordinates
+reverse-geocoded offline yield a real city, region and country for every photo,
+whatever the folder was named. Resolution order:
+
+| Source | Gives | Trust |
+| --- | --- | --- |
+| EXIF GPS → offline geocode | Real city / region / country | Ground truth |
+| Folder name | The trip label | Display; unreliable as geography |
+| Text mentions | Places written about | Needs resolving against the above |
+
+This is a substantive argument for doing the EXIF work early rather than treating it
+as a nice-to-have.
 
 > **Preserve the directory structure when transferring.** Copy the whole archive in
 > one operation from the root rather than moving journals and media separately.
@@ -341,11 +356,10 @@ confidence flag, not a perfect solution.
 | --- | --- | --- |
 | Word count (≤5) | Weak alone | `"Rain all day."` is short too |
 | No terminal `.` `!` `?` | Decent | Titles are rarely sentences |
-| **Matches a place-folder name** | **Strong** | The media tree already provides a complete vocabulary of every place visited — free, and specific to this archive |
+| Resembles a place-folder name | Moderate | Needs fuzzy/containment matching — see granularity caveat below |
 
-The third does most of the work, and exists only because the photos are foldered by
-place. Combined, they classify confidently at both extremes; the uncertain middle goes
-to a review list rather than being guessed. An LLM pass could adjudicate the remainder
+Combined, they classify confidently at both extremes; the uncertain middle goes to a
+review list rather than being guessed. An LLM pass could adjudicate the remainder
 during Phase 5's extraction, since that already reads every entry.
 
 `src/inspect_format.py` reports the distribution of these signals so thresholds are
@@ -406,8 +420,10 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 - [ ] Detect year rollover by watching for the month moving backwards (trips crossing
       New Year) — a safety check now, not the primary mechanism
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
-- [ ] Take the trip location from the filename and the media folder names as a
-      controlled vocabulary of places
+- [ ] Take the trip label from the filename and media folder names — treat as a label,
+      not geography; granularity is inconsistent (city / region / country)
+- [ ] Resolve real geography from EXIF GPS via offline reverse geocoding; store
+      city, region and country as separate fields rather than one place string
 - [ ] Read photo EXIF: `DateTimeOriginal` + GPS → offline reverse geocode to
       city/country. No AI needed; produces a verified travel timeline.
 - [ ] Record `entry_date` for every chunk; leave `event_date` resolution to Phase 5
