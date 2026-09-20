@@ -11,21 +11,27 @@ from src.dates import DATE_RE, NEAR_RE, parse_date_line
 
 # Variants observed or plausible in the real journals.
 VALID = [
-    ("Apr. 21", (4, 21)),      # the common form — period after the month
-    ("Apr 21", (4, 21)),
-    ("April 21", (4, 21)),
-    ("Apr 21.", (4, 21)),
-    ("Apr 21st", (4, 21)),
-    ("Sept. 3", (9, 3)),
-    ("Sep. 3", (9, 3)),
-    ("Sep 3", (9, 3)),
-    ("Sep.3", (9, 3)),        # no space — would otherwise vanish silently
-    ("September 3", (9, 3)),
-    ("May 1", (5, 1)),
-    ("Dec. 28", (12, 28)),
-    ("  Jun  4  ", (6, 4)),
-    ("March 7th", (3, 7)),
-    ("JAN 9", (1, 9)),
+    ("Apr. 21", (4, 21, None)),      # the common form — period after the month
+    ("Apr 21", (4, 21, None)),
+    ("April 21", (4, 21, None)),
+    ("Apr 21.", (4, 21, None)),
+    ("Apr 21st", (4, 21, None)),
+    ("Sept. 3", (9, 3, None)),
+    ("Sep. 3", (9, 3, None)),
+    ("Sep 3", (9, 3, None)),
+    ("Sep.3", (9, 3, None)),        # no space — would otherwise vanish silently
+    ("September 3", (9, 3, None)),
+    ("May 1", (5, 1, None)),
+    ("Dec. 28", (12, 28, None)),
+    ("  Jun  4  ", (6, 4, None)),
+    ("March 7th", (3, 7, None)),
+    ("JAN 9", (1, 9, None)),
+    # inline year — 42 entries of journal.docx, which has no filename year
+    ("Apr. 21, 2010", (4, 21, 2010)),
+    ("Apr 21 2010", (4, 21, 2010)),
+    ("April 21, 2010", (4, 21, 2010)),
+    ("Jun 3 -", (6, 3, None)),        # trailing dash instead of a period
+    ("Jun 3:", (6, 3, None)),
 ]
 
 # Prose that begins with a month prefix. A naive "May[a-z]*" pattern matches

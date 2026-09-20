@@ -39,8 +39,19 @@ MONTH_NUM = {
 # The separator is \s* rather than \s+ so "Sep.3" parses too. Safe because the
 # line must contain nothing else: a whole line reading "Sep.3" is a date, never
 # prose. Without this it would fail BOTH patterns and vanish silently.
+#
+# The optional trailing year handles "Apr. 21, 2010", found in 42 entries of
+# journal.docx and 3 of elbonia - 2010.docx. It is load-bearing for the former:
+# that file has no year in its filename, so the in-text year is its ONLY date
+# source. An in-text year always wins over the filename.
+#
+# Trailing punctuation is tolerated because at least one entry ends the date
+# with a dash rather than a period.
 DATE_RE = re.compile(
-    rf"^\s*({MONTHS})\.?\s*(\d{{1,2}})(?:st|nd|rd|th)?\.?\s*$", re.IGNORECASE
+    rf"^\s*({MONTHS})\.?\s*(\d{{1,2}})(?:st|nd|rd|th)?\.?"
+    rf"(?:\s*,?\s*(\d{{4}}))?"
+    rf"\s*[.,\-–—:;]*\s*$",
+    re.IGNORECASE,
 )
 
 # Begins like a date but carries more on the line.
@@ -50,11 +61,21 @@ NEAR_RE = re.compile(rf"^\s*({MONTHS})\.?\s*(\d{{1,2}})\b", re.IGNORECASE)
 MONTHWORD_RE = re.compile(rf"^\s*({MONTHS})\b", re.IGNORECASE)
 
 
-def parse_date_line(line: str) -> tuple[int, int] | None:
-    """Return (month, day) for a date line, or None if it isn't one."""
+def parse_date_line(line: str) -> tuple[int, int, int | None] | None:
+    """Return (month, day, year_or_None) for a date line, else None.
+
+    The year is present only when written inline ("Apr. 21, 2010"). When it is,
+    it takes precedence over the year parsed from the filename — some files
+    (journal.docx) have no filename year at all.
+    """
     m = DATE_RE.match(line or "")
     if not m:
         return None
     month = MONTH_NUM[m.group(1)[:3].lower()]
     day = int(m.group(2))
-    return (month, day) if 1 <= day <= 31 else None
+    if not 1 <= day <= 31:
+        return None
+    year = int(m.group(3)) if m.group(3) else None
+    if year is not None and not 1900 <= year <= 2100:
+        return None
+    return month, day, year
