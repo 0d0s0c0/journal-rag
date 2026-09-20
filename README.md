@@ -267,6 +267,8 @@ sampling — so treat them as timeline evidence only for now.
       a direct Finder network share, or AirDrop between your own devices.
 - [ ] Copy the whole tree in one operation, preserving structure (see warning above)
 - [ ] Inventory: journal count, year range, `.doc` vs `.docx` split
+- [ ] Run `src/inspect_format.py` over the archive — reports structure and formatting
+      statistics only, no journal text, so the output is safe to share
 - [ ] **Count total words/tokens** — determines whether the corpus would even fit in a
       long-context window, which is worth knowing as a correctness baseline to check
       the RAG pipeline against
