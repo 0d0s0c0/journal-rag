@@ -1,8 +1,13 @@
 """Probe journal .doc/.docx files for structure without disclosing content.
 
-Answers the questions the parser needs answered — are date lines detectable,
-are titles visually distinct, how consistent is the formatting — while printing
-only counts, style names and character lengths. No journal text is emitted.
+Date lines are the only structure in this archive: one starts a new entry, and
+everything else is text. So the questions that matter are whether every date
+line is detectable, and whether any are hidden where a paragraph scan will miss
+them — a missed date does not error, it silently merges two entries under the
+wrong date.
+
+Prints counts, shape descriptions and character lengths only. No journal text is
+emitted, so the output is safe to share.
 
     uv run python -m src.inspect_format "<file.docx>"
     uv run python -m src.inspect_format "<dir>"     # every .doc/.docx within
@@ -25,8 +30,16 @@ from docx import Document
 from docx.oxml.ns import qn
 
 # "Jun 14", "Jun 4", "Jun 14." — month abbreviation then day, nothing else.
-DATE_RE = re.compile(r"^\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*\.?\s*$",
-                     re.IGNORECASE)
+MONTHS = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
+
+# Strict: a month abbreviation and a day, and nothing else on the line.
+DATE_RE = re.compile(rf"^\s*({MONTHS})\s+(\d{{1,2}})\s*\.?\s*$", re.IGNORECASE)
+
+# Starts like a date but carries more on the line (e.g. a same-line title).
+NEAR_RE = re.compile(rf"^\s*({MONTHS})[a-z]*\.?\s+(\d{{1,2}})\b", re.IGNORECASE)
+
+# Begins with a month word but no day followed — e.g. "June" alone, "Jun 3rd".
+MONTHWORD_RE = re.compile(rf"^\s*({MONTHS})[a-z]*\b", re.IGNORECASE)
 
 
 def _fmt(par) -> str:
@@ -61,32 +74,47 @@ def probe(path: Path, display: str | None = None) -> None:
         print(f"  styles present  : {dict(styles.most_common(6))}")
         return
 
-    print(f"date-line format  : {dict(Counter(_fmt(pars[i]) for i in date_idx))}")
+    # THE critical check. Date lines are now the ONLY structure in the archive,
+    # so a date the regex misses does not raise an error — it silently merges
+    # two entries and attributes both to the earlier date. Look for lines that
+    # begin like a date but failed the strict match, and describe their SHAPE
+    # (never their text) so the pattern can be extended if needed.
+    near: Counter[str] = Counter()
+    for p in nonempty:
+        t = (p.text or "").strip()
+        if DATE_RE.match(t):
+            continue
+        m = NEAR_RE.match(t)
+        if m:
+            rest = t[m.end():].strip(" .,-–—:")
+            if rest:
+                near[f"month+day followed by {len(rest.split())} more word(s) "
+                     f"(same-line title?)"] += 1
+            elif len(m.group(1)) != len(t.split()[0].rstrip(".")):
+                near["full month name, e.g. 'June 16' not 'Jun 16'"] += 1
+            else:
+                near["month+day with unexpected trailing characters"] += 1
+        elif MONTHWORD_RE.match(t) and len(t.split()) <= 6:
+            near["month word but day not matched, e.g. ordinal '17th'"] += 1
+    if near:
+        print(f"  !! {sum(near.values())} near-miss date line(s) — would MERGE entries:")
+        for shape, n in near.most_common(5):
+            print(f"       {n:4d}x  {shape}")
+    else:
+        print("near-miss dates   : none — regex appears to catch every date line")
 
-    # Soft line breaks (Shift+Enter) live INSIDE a paragraph as '\n'. They look
-    # identical to the writer but are invisible if you only iterate paragraphs,
-    # so count them before assuming blank paragraphs are the only separator.
+    # Soft line breaks (Shift+Enter) live INSIDE a paragraph as '\n'. A date on
+    # such a line is invisible to a paragraph-based scan, so the entry vanishes.
     soft = sum(1 for p in pars if "\n" in (p.text or ""))
-    print(f"soft line breaks  : {soft} paragraph(s) contain internal newlines"
-          f"{'  <-- significant, gaps may be inside paragraphs' if soft else ''}")
-
-    # Empty paragraphs are what the blank-line rule depends on. If an editor
-    # (Word or LibreOffice) renders the gap via paragraph SPACING instead, the
-    # visual layout is unchanged but the empty paragraphs are gone — and the
-    # rule silently fails. Report both so the cause is visible.
-    n_empty = len(pars) - len(nonempty)
-    spaced = sum(
-        1 for p in nonempty
-        if (p.paragraph_format.space_after is not None
-            and p.paragraph_format.space_after.pt > 0)
-        or (p.paragraph_format.space_before is not None
-            and p.paragraph_format.space_before.pt > 0)
+    soft_dates = sum(
+        1 for p in pars
+        for line in (p.text or "").split("\n")[1:]      # skip the first segment
+        if DATE_RE.match(line.strip())
     )
-    print(f"empty paragraphs  : {n_empty}")
-    print(f"paragraph spacing : {spaced}/{len(nonempty)} non-empty paras carry "
-          f"space before/after")
-    if n_empty == 0 and spaced:
-        print("  !! gaps are SPACING, not empty paragraphs — blank-line rule will not work")
+    print(f"soft line breaks  : {soft} paragraph(s) contain internal newlines")
+    if soft_dates:
+        print(f"  !! {soft_dates} date line(s) hidden inside paragraphs — "
+              f"these entries would be MISSED entirely")
 
     # Did photo hyperlinks survive whatever editors touched this file?
     n_links = sum(
@@ -113,9 +141,11 @@ def probe(path: Path, display: str | None = None) -> None:
         print(f"                    {over}/{n} exceed 2000 chars (need sub-splitting)")
         print(f"total body chars  : {sum(sizes):,}  (~{sum(sizes) // 4:,} tokens)")
 
+    # The journals carry no formatting; report only if that turns out false.
     styles = Counter(_fmt(p) for p in nonempty)
     if len(styles) > 1:
-        print(f"styles in use     : {dict(styles.most_common(4))}")
+        print(f"styles in use     : {dict(styles.most_common(4))}  "
+              f"(expected a single style)")
 
 
 
