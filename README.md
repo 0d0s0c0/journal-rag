@@ -63,9 +63,11 @@ in Phase 5. See [`docs/SETUP.md`](docs/SETUP.md) for the numbers.
             (gemma4, batch)               │
                         ┌─────────────────┼─────────────────┐
                         ▼                 ▼                 ▼
-                  vector index      keyword index      facts table
-                   (semantic)          (BM25)         (trips, places,
-                        │                 │            dishes, dates)
+                  vector index      keyword index   experience index
+                   (semantic)          (BM25)        (food, activities,
+                        │                 │           sites, museums,
+                        │                 │           people, places,
+                        │                 │           sentiment, dates)
                         └────────┬────────┘                 │
                                  ▼                          │
                           hybrid retrieval  ◄────────────────┘
@@ -443,12 +445,76 @@ Photo EXIF corroborates: a photo of noodle soup timestamped Jun 12 confirms the 
 - [ ] Verify offline operation with the network disconnected
 - [ ] Run the real questions; expect the "where in 2019" class to underperform
 
-### Phase 5 — Hybrid retrieval and structured facts
+### Phase 5 — Hybrid retrieval and the experience index
+
+This is where the interesting questions become answerable. Not just *"where did I travel
+in 2019"*, but:
+
+> *"What were some of my favourite meals and where did I have them?"*
+> *"What were some of my favourite snorkelling places?"*
+> *"Which museums did I actually like?"*
+> *"Who did I meet in Ruritania?"*
+> *"What were the highlights of 2019?"*
+
+Vector search cannot answer these, for two independent reasons:
+
+**Judgment.** *"Favourite"* is valence, and embeddings barely encode it — measured at
+0.006 separation between praise and complaint, with the order flipping on a single word
+change. Retrieval surfaces meal-related entries, not *good*-meal entries.
+
+**Coverage.** These are questions about 1,703 entries across 16 years. Top-k retrieval
+sees perhaps 15. The model then answers fluently from 1% of the archive with nothing
+signalling how little it saw — a confidently incomplete answer, which is worse than a
+refusal.
+
+The extraction pass fixes both: read **every** entry once, offline, and write structured
+rows. The question then queries 1,703 facts instead of guessing from 15 chunks.
+
+#### Schema: one `experience` table, not one per category
+
+Travel is food *and* activities, sites, museums, lodging, transport, people, wildlife,
+mishaps. A single table with a `type` column beats parallel tables — one extraction
+prompt to maintain, and cross-category questions ("highlights of 2019") need no union.
+
+| Column | Notes |
+| --- | --- |
+| `type` | **Controlled vocabulary** — see below. Free text here and the LLM invents fifty near-synonyms, breaking every query. |
+| `name` | The thing itself — a dish, a reef, a museum, a person |
+| `place` | Where it happened, as written |
+| `sentiment` | Ordinal −2…+2, not free text. This is what makes "favourite" queryable. |
+| `evidence` | The verbatim phrase that justified the sentiment |
+| `entry_date` / `event_date` | When written vs. when it happened |
+| `source_file`, `trip`, `photo_paths` | Provenance and linked images |
+
+**Types:** `food`, `drink`, `activity`, `site`, `museum`, `lodging`, `transport`,
+`person`, `wildlife`, `purchase`, `mishap`, `other`.
+
+`evidence` earns its place: it lets an answer say *"the snorkelling at X — you wrote
+'best visibility I've ever seen'"* rather than asserting a preference you cannot check.
+It also makes wrong extractions visible instead of silently authoritative.
+
+#### What each question becomes
+
+| Question | Query |
+| --- | --- |
+| favourite meals and where | `type=food`, `sentiment>=1`, return `name, place` |
+| favourite snorkelling places | `type=activity`, `name~snorkel`, `sentiment>=1` |
+| museums I liked | `type=museum`, `sentiment>=1` |
+| people met in Ruritania | `type=person`, `place~Ruritania` |
+| highlights of 2019 | any type, `sentiment=2`, `year=2019` |
+| where did I travel in 2019 | distinct `place` where `year=2019` |
+
+Every one is exhaustive over the archive and cheap at query time. The extraction is the
+expensive part, and it runs once.
 
 - [ ] Parse year/date ranges from questions; filter *before* semantic ranking
 - [ ] Add BM25 keyword search; fuse rankings with vectors
-- [ ] Offline extraction pass: run the local LLM over every entry once, pulling
-      `{entry_date, event_date, country, city, dishes, restaurants, people}` into SQLite
+- [ ] Offline extraction pass over all 1,703 entries into the `experience` table
+- [ ] Pin the `type` vocabulary in the prompt; reject anything outside it
+- [ ] Record an `extraction_version` so the pass can be re-run with a better prompt
+      later without ambiguity about which rows came from where
+- [ ] Spot-check a sample against memory — a 12B model will miss some enthusiasm and
+      over-read other passages; Phase 6's eval set is how that gets measured
 - [ ] **Resolve relative dates** ("two days ago", "last Tuesday", "the night before")
       against the entry date, and store the result as `event_date`. Facts are indexed
       by when they *happened*, not by when they were written about.

@@ -15,7 +15,7 @@ paths:
   raw: ${data_root}/raw       # original .doc / .docx, never modified
   text: ${data_root}/text     # converted plain text
   index: ${data_root}/index   # vector database
-  facts: ${data_root}/facts.db # extracted structured facts (Phase 5)
+  facts: ${data_root}/facts.db # experience index (Phase 5)
   eval: ${data_root}/eval     # evaluation question sets (Phase 6)
 
 # Local model server. Nothing here talks to the internet.
