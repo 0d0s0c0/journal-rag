@@ -33,17 +33,16 @@ MONTH_NUM = {
 }
 
 # Month, optional period, day, optional ordinal, optional period — and NOTHING
-# else on the line. The trailing anchor is deliberate: "Jun 15  Ha Long Bay"
+# else on the line. The trailing anchor is deliberate: "Jun 15  Zenda"
 # is left to NEAR_RE, because a same-line title is ambiguous and worth surfacing
 # rather than silently accepting.
 # The separator is \s* rather than \s+ so "Sep.3" parses too. Safe because the
 # line must contain nothing else: a whole line reading "Sep.3" is a date, never
 # prose. Without this it would fail BOTH patterns and vanish silently.
 #
-# The optional trailing year handles "Apr. 21, 2010", found in 42 entries of
-# journal.docx and 3 of elbonia - 2010.docx. It is load-bearing for the former:
-# that file has no year in its filename, so the in-text year is its ONLY date
-# source. An in-text year always wins over the filename.
+# The optional trailing year handles "Apr. 21, 2010", observed in a handful of
+# real entries. When present it wins over the year parsed from the filename,
+# which matters for any file whose name carries no year.
 #
 # Trailing punctuation is tolerated because at least one entry ends the date
 # with a dash rather than a period.

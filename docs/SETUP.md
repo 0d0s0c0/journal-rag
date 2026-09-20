@@ -287,12 +287,12 @@ Measured against three toy sentences, query `"outstanding food I had"`:
 ```
 WITHOUT instruction prefix   (spread: 0.0523)
   0.5807  we ate a forgettable sandwich at the airport
-  0.5293  the uni in Vladero ruined me for all other sea urchin
+  0.5391  the uni in Vladero ruined me for all other sea urchin
   0.5285  the hotel wifi was down all morning
 
-WITH instruction prefix      (spread: 0.1900)
+WITH instruction prefix      (spread: 0.1962)
+  0.4446  the uni in Vladero ruined me for all other sea urchin
   0.4384  we ate a forgettable sandwich at the airport
-  0.4309  the uni in Vladero ruined me for all other sea urchin
   0.2484  the hotel wifi was down all morning
 ```
 
@@ -311,24 +311,28 @@ Query: {the actual query}
 **Applies to queries only, not to the documents being indexed.** Stored passages are
 embedded bare. Getting this backwards silently degrades the whole index.
 
-#### Finding: embeddings capture topic, not valence
+#### Finding: embeddings barely separate praise from complaint
 
-Even with the prefix, `"forgettable sandwich"` (0.4384) still scores *above*
-`"the uni ruined me for all other sea urchin"` (0.4309). Both are about food, and the
-embedding model does not encode that one is praise and the other a complaint.
+With the prefix, `"the uni ruined me for all other sea urchin"` (0.4446) and
+`"we ate a forgettable sandwich at the airport"` (0.4384) are separated by 0.006 —
+noise. Re-running with a single place name changed flips their order. Meanwhile the
+genuinely irrelevant passage sits far below at 0.2484.
+
+So the embedding reliably identifies *subject matter* (food vs. not-food) and is close
+to useless at *judgment* (good vs. bad). An earlier version of this note claimed
+"topic, not valence" on the strength of one ordering; that ordering was not stable, and
+the corrected claim is the weaker one above.
 
 Consequence for this project: the motivating question — *"what were some outstanding
 foods I had?"* — **cannot be answered by vector search alone**. Retrieval surfaces
 food-related entries; judging which were *good* has to come from the LLM reading them
-(Phase 4) or from the structured extraction pass (Phase 5).
-
-This is a sharper form of the two-query-types argument in the README: semantic search
-finds *subject matter*, not *judgment*.
+(Phase 4) or the structured extraction pass (Phase 5).
 
 > Evidence caveat: three toy sentences. Real journal entries are longer and more
-> distinctive, which generally helps. The instruction-prefix effect is solid and
-> reproducible; the valence finding should be re-tested against the real corpus in
-> Phase 3.
+> distinctive. The instruction-prefix effect is large and reproducible (spread 0.05 to
+> 0.20); the praise-vs-complaint result is within noise and should be re-tested against
+> the real corpus in Phase 3.
+
 
 #### Tested and *not* supported: the "query/passage asymmetry" story
 
@@ -448,7 +452,7 @@ neither until this is run.
 
 | Test | Result |
 | --- | --- |
-| `git add -f "Japan 2019.docx"` → commit | **blocked** |
+| `git add -f "Ruritania 2019.docx"` → commit | **blocked** |
 | Notebook with outputs, no filter configured | **blocked** by hook |
 | Notebook with outputs, filter configured | never even stages (see below) |
 | Ordinary source file | commits normally |

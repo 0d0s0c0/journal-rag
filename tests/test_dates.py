@@ -57,7 +57,7 @@ def test_prose_is_not_a_date(line):
     assert parse_date_line(line) is None
 
 
-@pytest.mark.parametrize("line", ["Jun 15   Ha Long Bay", "Apr. 21 Klow"])
+@pytest.mark.parametrize("line", ["Jun 15   Zenda", "Apr. 21 Klow"])
 def test_same_line_title_is_a_near_miss_not_a_date(line):
     """Ambiguous, so surfaced by the probe rather than silently accepted."""
     assert DATE_RE.match(line) is None

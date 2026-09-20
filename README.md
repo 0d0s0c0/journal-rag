@@ -42,13 +42,15 @@ disappoint on a real archive. Phases 1–4 build the semantic path and the funda
 extraction pass into a structured facts table — is what makes the second kind work.
 
 There is a sharper edge to (1) than it first appears, measured during setup:
-**embeddings capture topic, not valence.** "We ate a forgettable sandwich at the
-airport" scores *higher* against the query "outstanding food I had" than "the uni in
-Vladero ruined me for all other sea urchin" does. Both are about food; the vector
-space does not encode which one is praise. So even the semantic path only narrows to
-*subject matter* — deciding which meals were actually good falls to the LLM reading
-the entries, or to the structured extraction in Phase 5. See
-[`docs/SETUP.md`](docs/SETUP.md) for the numbers.
+**embeddings identify subject matter, but barely separate praise from complaint.**
+Against the query "outstanding food I had", "we ate a forgettable sandwich at the
+airport" and "the uni in Vladero ruined me for all other sea urchin" score within
+0.006 of each other — noise, and their order flips if a single word changes. A
+genuinely irrelevant passage sits far below.
+
+So the semantic path narrows to *food-related entries* and no further. Deciding which
+meals were actually good falls to the LLM reading them, or to the structured extraction
+in Phase 5. See [`docs/SETUP.md`](docs/SETUP.md) for the numbers.
 
 ## Architecture
 
@@ -96,13 +98,13 @@ photos say June 14, the photos win.
 
 **Vision captioning** is the second tier. `gemma4:12b` already reports `vision`
 capability with a CLIP projector — no extra model to download. Run each photo through
-it once, offline, and store the description ("a bowl of pho with herbs, street-side
+it once, offline, and store the description ("a bowl of noodle soup with herbs, street-side
 plastic stools") as text embedded alongside journal chunks. Photos then become
 searchable in the same vector space as the writing, with no separate image-embedding
 infrastructure.
 
 It also does OCR, which matters more than it sounds: restaurant signs, menus, receipts,
-train tickets. "Pho Thin" may exist only on a shopfront in a photograph and never in
+train tickets. "The Copper Pot" may exist only on a shopfront in a photograph and never in
 the text.
 
 **Association** — linking a photo to the entry it belongs to — depends on where the
@@ -114,7 +116,7 @@ photos live:
 | Journal written in a hurry, no link | Folder `<year>/<place>` narrows the trip; EXIF timestamp matches the day's entry | Good, looser |
 
 Link targets are parsed rather than resolved by Word, so stale Windows paths
-(`file:///C:/Users/me/Journals/2019/Ha%20Long%20Bay/IMG_9876.jpg`) re-root onto the
+(`file:///C:/Users/me/Journals/2019/Zenda%20Bay/IMG_9876.jpg`) re-root onto the
 local archive by keeping the trailing `<year>/<place>/<filename>`.
 
 Practical notes: iPhone photos are usually **HEIC** and need `pillow-heif` to read; and
@@ -211,13 +213,13 @@ Measurements from the real archive, and the parser requirements they revealed, a
 ```
 <archive root>/
     Ruritania - 2019.docx          ← journals live at the root
-    Japan - 2018.doc                "<place> - <YYYY>.doc(x)"
+    Syldavia - 2018.doc                "<place> - <YYYY>.doc(x)"
     ...
     2019/                        ← media, foldered by year
         Strelsau/                       then by place
             IMG_1234.jpg
             clip.mov
-        Ha Long Bay/
+        Zenda/
     2018/
         Klow/
 ```
@@ -258,7 +260,7 @@ as a nice-to-have.
 > Less critical than it first appears: `src/docx_links.py` parses link targets itself
 > rather than asking Word to resolve them, keeping the trailing
 > `<year>/<place>/<filename>`. So even a stale Windows absolute path
-> (`file:///C:/Users/me/Journals/2019/Ha%20Long%20Bay/IMG_9876.jpg`) re-roots onto the
+> (`file:///C:/Users/me/Journals/2019/Zenda%20Bay/IMG_9876.jpg`) re-roots onto the
 > local archive correctly. Preserving the tree keeps that mapping aligned; it is not
 > make-or-break.
 
@@ -307,9 +309,9 @@ The source format is:
 
 ```
 Apr. 21                   ← month + day on its own line (see variants below)
-Ha Long Bay               ← optional title, own line
+Zenda               ← optional title, own line
 We took the boat out early. Two days ago in Strelsau I had
-the best pho of my life at a place near the station...
+the best noodle soup of my life at a place near the station...
 ```
 
 Date lines are the **only** structure in the archive — there is no formatting at all —
@@ -340,7 +342,7 @@ returns, so that gap carries no information. The discriminator is the gap after 
 Jun 14                       Jun 15
                              
                              
-Ha Long Bay   ← title        Rain all day…  ← body starts directly
+Zenda   ← title        Rain all day…  ← body starts directly
                              
                              
 We took the boat…
@@ -385,11 +387,11 @@ twelve months early, silently. Process entries in order and increment the year w
 the month moves backwards.
 
 **3. Relative dates — the one that breaks the naive model.** "Two days ago in Strelsau I
-had the best pho of my life" means the *event* happened on Jun 12, while the *text*
+had the best noodle soup of my life" means the *event* happened on Jun 12, while the *text*
 lives in the Jun 14 entry.
 
 A chunk therefore cannot have a single date. Ask "what did I eat on June 12?" and a
-system that only knows entry dates searches the Jun 12 entry, finds no pho, and reports
+system that only knows entry dates searches the Jun 12 entry, finds no noodle soup, and reports
 nothing — while the answer sits two entries later.
 
 **Two date fields, not one:**
@@ -403,7 +405,7 @@ This is a further argument for the Phase 5 extraction pass: resolving "two days 
 against a known entry date is exactly what an LLM does well and what regex does badly.
 The extraction prompt must ask for the event date explicitly.
 
-Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resolution.
+Photo EXIF corroborates: a photo of noodle soup timestamped Jun 12 confirms the resolution.
 
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
