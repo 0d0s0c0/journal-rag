@@ -22,6 +22,7 @@ from collections import Counter
 from pathlib import Path
 
 from docx import Document
+from docx.oxml.ns import qn
 
 # "Jun 14", "Jun 4", "Jun 14." — month abbreviation then day, nothing else.
 DATE_RE = re.compile(r"^\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*\.?\s*$",
@@ -68,6 +69,31 @@ def probe(path: Path, display: str | None = None) -> None:
     soft = sum(1 for p in pars if "\n" in (p.text or ""))
     print(f"soft line breaks  : {soft} paragraph(s) contain internal newlines"
           f"{'  <-- significant, gaps may be inside paragraphs' if soft else ''}")
+
+    # Empty paragraphs are what the blank-line rule depends on. If an editor
+    # (Word or LibreOffice) renders the gap via paragraph SPACING instead, the
+    # visual layout is unchanged but the empty paragraphs are gone — and the
+    # rule silently fails. Report both so the cause is visible.
+    n_empty = len(pars) - len(nonempty)
+    spaced = sum(
+        1 for p in nonempty
+        if (p.paragraph_format.space_after is not None
+            and p.paragraph_format.space_after.pt > 0)
+        or (p.paragraph_format.space_before is not None
+            and p.paragraph_format.space_before.pt > 0)
+    )
+    print(f"empty paragraphs  : {n_empty}")
+    print(f"paragraph spacing : {spaced}/{len(nonempty)} non-empty paras carry "
+          f"space before/after")
+    if n_empty == 0 and spaced:
+        print("  !! gaps are SPACING, not empty paragraphs — blank-line rule will not work")
+
+    # Did photo hyperlinks survive whatever editors touched this file?
+    n_links = sum(
+        1 for p in pars for h in p._p.findall(qn("w:hyperlink"))
+        if h.get(qn("r:id")) in doc.part.rels
+    )
+    print(f"hyperlinks        : {n_links}")
 
     # The shape of each entry: how many blank paragraphs follow the date, how
     # long the next non-empty line is, then the same again. If a double gap
