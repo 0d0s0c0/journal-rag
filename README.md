@@ -301,26 +301,39 @@ Four consequences, in increasing order of difficulty.
 text, identical in style to the body. Length heuristics fool easily — a one-line entry
 such as `"Rain all day."` is shorter than most titles.
 
-**The signal is blank-line structure.** Two carriage returns separate the header block
-from the body, which makes the gap immediately after the date line the discriminator:
+**The signal is blank-line structure.** The date is *always* followed by two carriage
+returns, so that gap carries no information. The discriminator is the gap after the
+**next** line:
 
 ```
-Jun 14                    Jun 15
-Ha Long Bay   ← title
-                          ← +2 blanks, no title
-We took the boat…         Rain all day.
+Jun 14                       Jun 15
+                             
+                             
+Ha Long Bay   ← title        Rain all day…  ← body starts directly
+                             
+                             
+We took the boat…
 ```
 
-| Shape after the date line | Meaning |
+| Gap after the line following the date | Meaning |
 | --- | --- |
-| `+0 blank` → text → `+2 blank` → body | title present |
-| `+2 blank` → body | no title |
+| 2 blanks | that line was a **title** |
+| fewer | that line was the **body** |
 
-Structural rather than cosmetic, and therefore more reliable than styling would have
-been. `src/inspect_format.py` reports these shapes as a histogram so the rule can be
-validated against the real archive before the parser depends on it — expect drift over
-ten years of writing, and send non-conforming shapes to a review list rather than
-guessing.
+**This only works if body paragraphs are separated by something other than two blank
+lines.** If a multi-paragraph entry also uses two returns between paragraphs, then
+`date / 2CR / X / 2CR / Y` is genuinely ambiguous — X could be a title or a first
+paragraph, and no structural rule can separate them. `src/inspect_format.py` measures
+exactly this and reports:
+
+```
+gaps between body paragraphs: {1: 143, 2: 4}
+  ok: only 3% of body gaps are 2 blanks — a 2-blank gap after the first line
+      reliably marks a title
+```
+
+Validate against the real archive before the parser depends on it. Expect drift over
+ten years of writing; send non-conforming shapes to a review list rather than guessing.
 
 > **Soft line breaks are a trap here.** Shift+Enter produces a line break *inside* a
 > paragraph (`\n` in the text) rather than a new paragraph. Visually identical, but
@@ -360,8 +373,10 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
 - [ ] Parse the `MMM DD` line; take the year from the filename (`<place> - <YYYY>`)
-- [ ] Detect the optional title via blank-line structure: `+0 blank` after the date
-      means a title follows; `+2 blank` means the body starts directly
+- [ ] Detect the optional title via blank-line structure: the date is always followed
+      by 2 blanks, so the discriminator is the gap after the NEXT line — 2 blanks means
+      that line was a title
+- [ ] First verify body paragraphs use a different separator, or the rule is ambiguous
 - [ ] Detect year rollover by watching for the month moving backwards (trips crossing
       New Year) — a safety check now, not the primary mechanism
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
