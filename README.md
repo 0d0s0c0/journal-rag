@@ -320,20 +320,43 @@ We took the boat…
 | 2 blanks | that line was a **title** |
 | fewer | that line was the **body** |
 
-**This only works if body paragraphs are separated by something other than two blank
-lines.** If a multi-paragraph entry also uses two returns between paragraphs, then
-`date / 2CR / X / 2CR / Y` is genuinely ambiguous — X could be a title or a first
-paragraph, and no structural rule can separate them. `src/inspect_format.py` measures
-exactly this and reports:
+**Body paragraphs also use two carriage returns**, which means this structural rule
+does *not* work: `date / 2CR / X / 2CR / Y` is genuinely ambiguous, and X could be a
+title or a first paragraph. No layout rule can separate them.
+
+#### Why this matters less than it appears
+
+Before building a classifier, ask what being wrong actually costs. **Keep the first
+line in the chunk text regardless of how it is classified**, and misclassification
+only affects a metadata field — never content. A title treated as body means a chunk
+that opens with "Ha Long Bay". A first paragraph treated as a title means a slightly
+odd citation label, with the text still present and still searchable.
+
+Nothing becomes unfindable either way. So this wants a cheap heuristic and an honest
+confidence flag, not a perfect solution.
+
+#### The signals
+
+| Signal | Strength | Note |
+| --- | --- | --- |
+| Word count (≤5) | Weak alone | `"Rain all day."` is short too |
+| No terminal `.` `!` `?` | Decent | Titles are rarely sentences |
+| **Matches a place-folder name** | **Strong** | The media tree already provides a complete vocabulary of every place visited — free, and specific to this archive |
+
+The third does most of the work, and exists only because the photos are foldered by
+place. Combined, they classify confidently at both extremes; the uncertain middle goes
+to a review list rather than being guessed. An LLM pass could adjudicate the remainder
+during Phase 5's extraction, since that already reads every entry.
+
+`src/inspect_format.py` reports the distribution of these signals so thresholds are
+calibrated against the real archive rather than invented:
 
 ```
-gaps between body paragraphs: {1: 143, 2: 4}
-  ok: only 3% of body gaps are 2 blanks — a 2-blank gap after the first line
-      reliably marks a title
+  first-line signals over 412 entries:
+    word count      : min=1 median=3 max=61
+    ends with .!?   : 118/412 (28%)
+    <=5 words, no   : 263/412 (63%)  <- title-like
 ```
-
-Validate against the real archive before the parser depends on it. Expect drift over
-ten years of writing; send non-conforming shapes to a review list rather than guessing.
 
 > **Soft line breaks are a trap here.** Shift+Enter produces a line break *inside* a
 > paragraph (`\n` in the text) rather than a new paragraph. Visually identical, but
@@ -373,10 +396,13 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
 - [ ] Parse the `MMM DD` line; take the year from the filename (`<place> - <YYYY>`)
-- [ ] Detect the optional title via blank-line structure: the date is always followed
-      by 2 blanks, so the discriminator is the gap after the NEXT line — 2 blanks means
-      that line was a title
-- [ ] First verify body paragraphs use a different separator, or the rule is ambiguous
+- [ ] Classify the first line as title-or-body by heuristic (word count, terminal
+      punctuation, match against the place-folder vocabulary) — structure cannot
+      decide, since body paragraphs use the same 2-blank separator
+- [ ] Keep that line in the chunk text regardless, so misclassification costs a
+      metadata label and never content
+- [ ] Flag low-confidence cases for review; consider adjudicating them in the Phase 5
+      extraction pass, which already reads every entry
 - [ ] Detect year rollover by watching for the month moving backwards (trips crossing
       New Year) — a safety check now, not the primary mechanism
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
