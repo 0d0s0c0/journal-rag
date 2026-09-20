@@ -231,11 +231,15 @@ exist.
 prose mentions against in Phase 5, instead of trusting an LLM to spell places
 consistently across ten years of entries.
 
-> **Preserve the directory structure when transferring.** Some journals contain
-> relative links to their photos; those links only resolve if the tree is copied intact.
-> Copy the whole archive in one operation from the root — do not move journals and
-> media separately, and do not reorganize on the way in. Broken relative paths mean
-> falling back to EXIF matching for everything.
+> **Preserve the directory structure when transferring.** Copy the whole archive in
+> one operation from the root rather than moving journals and media separately.
+>
+> Less critical than it first appears: `src/docx_links.py` parses link targets itself
+> rather than asking Word to resolve them, keeping the trailing
+> `<year>/<place>/<filename>`. So even a stale Windows absolute path
+> (`file:///C:/Users/me/Journals/2019/Ha%20Long%20Bay/IMG_9876.jpg`) re-roots onto the
+> local archive correctly. Preserving the tree keeps that mapping aligned; it is not
+> make-or-break.
 
 #### Photo association: two tiers
 
@@ -263,8 +267,8 @@ sampling — so treat them as timeline evidence only for now.
       long-context window, which is worth knowing as a correctness baseline to check
       the RAG pipeline against
 - [ ] Inventory media: counts per year/place, formats (HEIC needs `pillow-heif`)
-- [ ] Determine link type in the linked journals: hyperlink to a relative path,
-      `INCLUDEPICTURE` linked image, or embedded image — each extracts differently
+- [x] Determine link type: **external hyperlinks** (Word Insert → Link), extracted by
+      `src/docx_links.py` — verified against a synthetic journal
 - [ ] Convert `.docx` (python-docx / mammoth), preserving headings
 - [ ] Extract embedded images and link targets, recording position in the document
 - [ ] Convert legacy `.doc` via `textutil`
