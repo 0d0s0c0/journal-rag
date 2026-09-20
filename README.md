@@ -108,10 +108,14 @@ the text.
 **Association** — linking a photo to the entry it belongs to — depends on where the
 photos live:
 
-| Photos are… | Linking method | Quality |
+| Case | Linking method | Quality |
 | --- | --- | --- |
-| Embedded in the `.docx` | Document position — the image sits next to its text | Free and exact |
-| Separate files | EXIF timestamp → same-day entry | Good, looser |
+| Journal links the photo | External hyperlink in the `.docx` — gives both the target path and the paragraph it sits in (`src/docx_links.py`) | Exact |
+| Journal written in a hurry, no link | Folder `<year>/<place>` narrows the trip; EXIF timestamp matches the day's entry | Good, looser |
+
+Link targets are parsed rather than resolved by Word, so stale Windows paths
+(`file:///C:/Users/me/Journals/2019/Ha%20Long%20Bay/IMG_9876.jpg`) re-root onto the
+local archive by keeping the trailing `<year>/<place>/<filename>`.
 
 Practical notes: iPhone photos are usually **HEIC** and need `pillow-heif` to read; and
 any photo shared with "remove location data" has no GPS.
