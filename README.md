@@ -339,38 +339,16 @@ We took the boat…
 does *not* work: `date / 2CR / X / 2CR / Y` is genuinely ambiguous, and X could be a
 title or a first paragraph. No layout rule can separate them.
 
-#### Why this matters less than it appears
+**Decision: don't classify at all.** The title is treated as part of the entry.
 
-Before building a classifier, ask what being wrong actually costs. **Keep the first
-line in the chunk text regardless of how it is classified**, and misclassification
-only affects a metadata field — never content. A title treated as body means a chunk
-that opens with "Ha Long Bay". A first paragraph treated as a title means a slightly
-odd citation label, with the text still present and still searchable.
+An entry is everything between one date line and the next, title included. Nothing is
+lost — the title text is still in the chunk, still embedded, still searchable. What is
+given up is a separate `entry_title` metadata field, and citations use date plus the
+filename's trip label instead (`2019-06-14, Ruritania`), which cannot be wrong.
 
-Nothing becomes unfindable either way. So this wants a cheap heuristic and an honest
-confidence flag, not a perfect solution.
+This removes a classifier, fuzzy place matching, a confidence threshold and a review
+list from the design. The blank-line structure stops mattering entirely.
 
-#### The signals
-
-| Signal | Strength | Note |
-| --- | --- | --- |
-| Word count (≤5) | Weak alone | `"Rain all day."` is short too |
-| No terminal `.` `!` `?` | Decent | Titles are rarely sentences |
-| Resembles a place-folder name | Moderate | Needs fuzzy/containment matching — see granularity caveat below |
-
-Combined, they classify confidently at both extremes; the uncertain middle goes to a
-review list rather than being guessed. An LLM pass could adjudicate the remainder
-during Phase 5's extraction, since that already reads every entry.
-
-`src/inspect_format.py` reports the distribution of these signals so thresholds are
-calibrated against the real archive rather than invented:
-
-```
-  first-line signals over 412 entries:
-    word count      : min=1 median=3 max=61
-    ends with .!?   : 118/412 (28%)
-    <=5 words, no   : 263/412 (63%)  <- title-like
-```
 
 > **Soft line breaks are a trap here.** Shift+Enter produces a line break *inside* a
 > paragraph (`\n` in the text) rather than a new paragraph. Visually identical, but
@@ -410,13 +388,8 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
 - [ ] Parse the `MMM DD` line; take the year from the filename (`<place> - <YYYY>`)
-- [ ] Classify the first line as title-or-body by heuristic (word count, terminal
-      punctuation, match against the place-folder vocabulary) — structure cannot
-      decide, since body paragraphs use the same 2-blank separator
-- [ ] Keep that line in the chunk text regardless, so misclassification costs a
-      metadata label and never content
-- [ ] Flag low-confidence cases for review; consider adjudicating them in the Phase 5
-      extraction pass, which already reads every entry
+- [ ] Treat everything between one date line and the next as the entry, title included
+      — no title classification (see above)
 - [ ] Detect year rollover by watching for the month moving backwards (trips crossing
       New Year) — a safety check now, not the primary mechanism
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
@@ -427,8 +400,7 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 - [ ] Read photo EXIF: `DateTimeOriginal` + GPS → offline reverse geocode to
       city/country. No AI needed; produces a verified travel timeline.
 - [ ] Record `entry_date` for every chunk; leave `event_date` resolution to Phase 5
-- [ ] Attach metadata: `entry_date`, `year`, `month`, `source_file`, `trip`,
-      `entry_title`
+- [ ] Attach metadata: `entry_date`, `year`, `month`, `source_file`, `trip`
 - [ ] Prepend context to chunk text so each is interpretable alone
       ("2019-06-14, Strelsau — the noodles were incredible")
 
