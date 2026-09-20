@@ -58,30 +58,60 @@ def probe(path: Path) -> None:
 
     print(f"date-line format  : {dict(Counter(_fmt(pars[i]) for i in date_idx))}")
 
-    # What follows each date line? Title or straight into the body?
-    after: Counter[str] = Counter()
-    lengths: list[int] = []
+    # Soft line breaks (Shift+Enter) live INSIDE a paragraph as '\n'. They look
+    # identical to the writer but are invisible if you only iterate paragraphs,
+    # so count them before assuming blank paragraphs are the only separator.
+    soft = sum(1 for p in pars if "\n" in (p.text or ""))
+    print(f"soft line breaks  : {soft} paragraph(s) contain internal newlines"
+          f"{'  <-- significant, gaps may be inside paragraphs' if soft else ''}")
+
+    # The shape of each entry: how many blank paragraphs follow the date, how
+    # long the next non-empty line is, then the same again. If a double gap
+    # delimits the header, that pattern will dominate.
+    shapes: Counter[str] = Counter()
+    after_fmt: Counter[str] = Counter()
+
     for i in date_idx:
         j = i + 1
+        gap1 = 0
         while j < len(pars) and not (pars[j].text or "").strip():
+            gap1 += 1
             j += 1
         if j >= len(pars):
             continue
-        after[_fmt(pars[j])] += 1
-        lengths.append(len((pars[j].text or "").strip()))
+        len1 = len((pars[j].text or "").strip())
+        after_fmt[_fmt(pars[j])] += 1
 
-    print(f"line-after format : {dict(after.most_common(6))}")
-    if lengths:
-        short = sum(1 for n in lengths if n <= 40)
-        print(f"line-after length : min={min(lengths)} median={sorted(lengths)[len(lengths)//2]} "
-              f"max={max(lengths)}")
-        print(f"                    {short}/{len(lengths)} are <=40 chars (title-like)")
+        k = j + 1
+        gap2 = 0
+        while k < len(pars) and not (pars[k].text or "").strip():
+            gap2 += 1
+            k += 1
+        len2 = len((pars[k].text or "").strip()) if k < len(pars) else 0
 
-    distinct = set(after) - set(Counter(_fmt(pars[i]) for i in date_idx))
-    verdict = ("titles look formatting-distinguishable"
-               if len(after) > 1 or distinct else
-               "no formatting difference — will need text heuristics")
-    print(f"verdict           : {verdict}")
+        shapes[f"date +{gap1}blank -> {_bucket(len1)} +{gap2}blank -> {_bucket(len2)}"] += 1
+
+    print(f"line-after format : {dict(after_fmt.most_common(4))}")
+    print("entry shapes (most common first):")
+    for shape, n in shapes.most_common(6):
+        print(f"   {n:4d}x  {shape}")
+
+    distinct = set(after_fmt) - set(Counter(_fmt(pars[i]) for i in date_idx))
+    print("verdict           : "
+          + ("titles are formatting-distinguishable"
+             if distinct else
+             "no formatting difference — rely on blank-line structure"))
+
+
+def _bucket(n: int) -> str:
+    """Length as a coarse bucket, so nothing about the text itself is revealed."""
+    if n == 0:
+        return "(end)"
+    if n <= 40:
+        return f"short({n})"
+    if n <= 120:
+        return "medium"
+    return "long"
 
 
 def main() -> None:
