@@ -1,8 +1,9 @@
 # Journal RAG
 
 Ask natural-language questions about years of personal travel journals — *"Where did I
-travel in 2019, and what were the standout meals?"* — answered from the actual text,
-running entirely offline on a local LLM.
+travel in 2019?"*, *"What were my favourite meals and where did I have them?"*,
+*"What were the best places I snorkelled?"*, *"Which museums did I actually like?"* —
+answered from the actual text, running entirely offline on a local LLM.
 
 A learning project, built one phase at a time. The journals themselves are private and
 live outside this repository; only code is tracked here.
@@ -28,9 +29,10 @@ from* them.
 
 This shapes the whole design. The motivating questions are not one problem but two:
 
-1. **"What were the standout meals?"** — *semantic*. Vector search excels here. The
-   journal says "the uni in Vladero ruined me for all other sea urchin" and never uses
-   the word "standout." Embeddings catch that; keyword search does not.
+1. **"Tell me about the diving"** — *semantic*. Vector search excels here. The journal
+   says "the uni in Vladero ruined me for all other sea urchin" and never uses the word
+   "standout"; it describes a reef without writing "snorkelling." Embeddings catch that;
+   keyword search does not.
 
 2. **"Where did I travel in 2019?"** — *aggregation over a filtered set*. Vector search
    is **bad** at this. It returns the top-k most similar chunks, so if there were nine
@@ -39,7 +41,9 @@ This shapes the whole design. The motivating questions are not one problem but t
 Most RAG tutorials build only the first kind, which is why they demo beautifully and
 disappoint on a real archive. Phases 1–4 build the semantic path and the fundamentals.
 **Phase 5** — metadata filtering, keyword search fused with vectors, and an offline
-extraction pass into a structured facts table — is what makes the second kind work.
+extraction pass into an **experience index** — is what makes the second kind work, and
+what extends the whole system beyond food to activities, sites, museums, lodging,
+transport, people and wildlife.
 
 There is a sharper edge to (1) than it first appears, measured during setup:
 **embeddings identify subject matter, but barely separate praise from complaint.**
@@ -48,9 +52,10 @@ airport" and "the uni in Vladero ruined me for all other sea urchin" score withi
 0.006 of each other — noise, and their order flips if a single word changes. A
 genuinely irrelevant passage sits far below.
 
-So the semantic path narrows to *food-related entries* and no further. Deciding which
-meals were actually good falls to the LLM reading them, or to the structured extraction
-in Phase 5. See [`docs/SETUP.md`](docs/SETUP.md) for the numbers.
+So the semantic path narrows to *the right subject* and no further. Whether a meal, a
+reef or a museum was actually **good** is invisible to it — that judgment has to come
+from the LLM reading the entry, or from the sentiment recorded during Phase 5
+extraction. See [`docs/SETUP.md`](docs/SETUP.md) for the numbers.
 
 ## Architecture
 
