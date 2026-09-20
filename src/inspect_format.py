@@ -143,14 +143,42 @@ def probe(path: Path, display: str | None = None) -> None:
     print(f"gaps between body paragraphs: {dict(sorted(body_gaps.items()))}")
     two = body_gaps.get(2, 0)
     total = sum(body_gaps.values())
+    ambiguous = True
     if total:
         pct = 100 * two / total
-        if pct > 25:
+        ambiguous = pct > 25
+        if ambiguous:
             print(f"  !! {pct:.0f}% of body gaps are also 2 blanks — title vs first"
                   f" paragraph is AMBIGUOUS structurally; heuristics needed")
         else:
             print(f"  ok: only {pct:.0f}% of body gaps are 2 blanks — a 2-blank gap"
                   f" after the first line reliably marks a title")
+
+    # When structure can't decide, these are the signals a classifier would use.
+    # Report their distribution so the thresholds can be calibrated on real data
+    # rather than guessed.
+    if ambiguous:
+        words, ends_punct, short_no_punct = [], 0, 0
+        for i in date_idx:
+            j = i + 1
+            while j < len(pars) and not (pars[j].text or "").strip():
+                j += 1
+            if j >= len(pars):
+                continue
+            t = (pars[j].text or "").strip()
+            w = len(t.split())
+            words.append(w)
+            p = t.endswith((".", "!", "?", "…"))
+            ends_punct += p
+            short_no_punct += (w <= 5 and not p)
+        if words:
+            n = len(words)
+            print(f"  first-line signals over {n} entries:")
+            print(f"    word count      : min={min(words)} "
+                  f"median={sorted(words)[n // 2]} max={max(words)}")
+            print(f"    ends with .!?   : {ends_punct}/{n} ({100 * ends_punct // n}%)")
+            print(f"    <=5 words, no   : {short_no_punct}/{n} "
+                  f"({100 * short_no_punct // n}%)  <- title-like")
 
     distinct = set(after_fmt) - set(Counter(_fmt(pars[i]) for i in date_idx))
     print("verdict           : "
