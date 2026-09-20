@@ -366,12 +366,17 @@ rather than assume; the ecosystem moves.
 
 ```bash
 uv init --bare --python 3.14
-uv add lancedb python-docx mammoth pyyaml pandas rank-bm25 httpx \
+uv add lancedb python-docx pyyaml pandas rank-bm25 httpx \
        jupyterlab ipykernel nbstripout
 uv run python -c "import lancedb, docx, pandas; print('env ok')"
 ```
 
 `uv run` activates the environment automatically — no `source .venv/bin/activate`.
+
+`mammoth` was initially included to preserve headings during conversion, then removed:
+the journals carry no formatting, so there is nothing for it to preserve. `python-docx`
+remains because plain-text conversion (`textutil -convert txt`) would discard the photo
+hyperlinks, which live in the .docx relationship data and have no text representation.
 
 **Commit `uv.lock`.** It pins exact versions and is what makes the environment
 reproducible on another machine.
