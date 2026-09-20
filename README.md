@@ -200,15 +200,73 @@ Exact commands, rationale, and the problems hit along the way are recorded in
 
 ### Phase 1 — Ingestion
 
+#### Source layout
+
+```
+<archive root>/
+    Ruritania - 2019.docx          ← journals live at the root
+    Japan - 2018.doc                "<place> - <YYYY>.doc(x)"
+    ...
+    2019/                        ← media, foldered by year
+        Strelsau/                       then by place
+            IMG_1234.jpg
+            clip.mov
+        Ha Long Bay/
+    2018/
+        Klow/
+```
+
+This layout does a lot of work for us:
+
+**The year is in the filename.** `Ruritania - 2019.docx` all but eliminates the
+year-inference problem from Phase 2. Rollover detection remains as a safety check for
+trips crossing New Year, but the base year is known rather than guessed.
+
+**The folder tree maps media → place → year with no inference at all.**
+`2019/Strelsau/IMG_1234.jpg` gives location and year without reading EXIF, which means it
+still works for photos whose GPS was stripped, and it cross-checks EXIF where both
+exist.
+
+**Place folder names are a controlled vocabulary.** A known list of locations to match
+prose mentions against in Phase 5, instead of trusting an LLM to spell places
+consistently across ten years of entries.
+
+> **Preserve the directory structure when transferring.** Some journals contain
+> relative links to their photos; those links only resolve if the tree is copied intact.
+> Copy the whole archive in one operation from the root — do not move journals and
+> media separately, and do not reorganize on the way in. Broken relative paths mean
+> falling back to EXIF matching for everything.
+
+#### Photo association: two tiers
+
+Some journals link their photos; others (written in a hurry) do not.
+
+| Case | Method | Quality |
+| --- | --- | --- |
+| Journal links the photo | Extract the relative path from the `.docx` | Exact — text and image explicitly paired |
+| Embedded image | Extract with document position | Exact |
+| No link | Folder place + year → narrow to trip; EXIF timestamp → match to that day's entry | Good, looser |
+
+**Videos** (`.mov`, `.mp4`) carry creation-date and often GPS metadata just like stills,
+so they feed the timeline identically. Captioning them is a much larger job — frame
+sampling — so treat them as timeline evidence only for now.
+
+#### Steps
+
 - [ ] Get the files onto this machine **without routing them through cloud storage.**
       Dropbox/Drive/iCloud is the convenient path and would upload the entire archive
       to a third party — precisely what this project exists to avoid. Use a USB drive,
       a direct Finder network share, or AirDrop between your own devices.
-- [ ] Inventory the journals: count, date range, how they're organized
-- [ ] Inventory photos: where they live, formats (HEIC?), whether embedded in the docs
+- [ ] Copy the whole tree in one operation, preserving structure (see warning above)
+- [ ] Inventory: journal count, year range, `.doc` vs `.docx` split
+- [ ] **Count total words/tokens** — determines whether the corpus would even fit in a
+      long-context window, which is worth knowing as a correctness baseline to check
+      the RAG pipeline against
+- [ ] Inventory media: counts per year/place, formats (HEIC needs `pillow-heif`)
+- [ ] Determine link type in the linked journals: hyperlink to a relative path,
+      `INCLUDEPICTURE` linked image, or embedded image — each extracts differently
 - [ ] Convert `.docx` (python-docx / mammoth), preserving headings
-- [ ] Extract embedded images from `.docx`, recording their position in the document
-      (position = which text the photo belongs to, for free)
+- [ ] Extract embedded images and link targets, recording position in the document
 - [ ] Convert legacy `.doc` via `textutil`
 - [ ] Quality pass: encodings, dropped tables, lost bullets
 - [ ] Write a manifest; flag anything that converted badly
@@ -228,10 +286,10 @@ Jun 14   Ha Long Bay
 A three-letter month and day, an optional title, then the entry. Three consequences,
 in increasing order of difficulty.
 
-**1. No year in the header.** `Jun 14` is ambiguous on its own. The year must come from
-the filename, document title, or folder — which makes file-level metadata load-bearing.
-Any file whose year cannot be determined becomes a manual review item rather than a
-guess.
+**1. No year in the header.** `Jun 14` is ambiguous on its own — but the filename
+carries it (`Ruritania - 2019.docx`), so this is largely solved. File-level metadata is
+load-bearing: any file whose year cannot be parsed from its name becomes a manual
+review item rather than a guess.
 
 **2. Year rollover.** Entries running `Dec 28` → `Jan 3` cross a year boundary inside a
 single file. Assigning the file's year to every entry would date that January entry
@@ -261,9 +319,12 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
-- [ ] Parse the `MMM DD` header; carry the year from file-level metadata
-- [ ] Detect year rollover by watching for the month moving backwards
-- [ ] Flag entries whose year cannot be determined — review, don't guess
+- [ ] Parse the `MMM DD` header; take the year from the filename (`<place> - <YYYY>`)
+- [ ] Detect year rollover by watching for the month moving backwards (trips crossing
+      New Year) — a safety check now, not the primary mechanism
+- [ ] Flag files whose year cannot be parsed from the name — review, don't guess
+- [ ] Take the trip location from the filename and the media folder names as a
+      controlled vocabulary of places
 - [ ] Read photo EXIF: `DateTimeOriginal` + GPS → offline reverse geocode to
       city/country. No AI needed; produces a verified travel timeline.
 - [ ] Record `entry_date` for every chunk; leave `event_date` resolution to Phase 5
