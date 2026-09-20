@@ -297,16 +297,34 @@ the best pho of my life at a place near the station...
 A three-letter month and day, an optional title on the following line, then the entry.
 Four consequences, in increasing order of difficulty.
 
-**0. The title is not positionally distinguishable from the body.** Both are "the
-paragraph after the date," so position alone cannot tell them apart. Text heuristics
-(short, no terminal punctuation) are guessable but fool easily — a one-line entry
-such as "Rain all day." looks exactly like a title.
+**0. The title is not distinguishable by formatting or by length.** Titles are plain
+text, identical in style to the body. Length heuristics fool easily — a one-line entry
+such as `"Rain all day."` is shorter than most titles.
 
-The reliable signal is **formatting**: `.docx` preserves paragraph styles and run
-properties, so a title that is bold, styled as a Heading, or a different size can be
-detected exactly rather than inferred. Expect inconsistency across ten years of
-writing — plan for styled-where-available, heuristic otherwise, with ambiguous cases
-sent to a review list rather than guessed.
+**The signal is blank-line structure.** Two carriage returns separate the header block
+from the body, which makes the gap immediately after the date line the discriminator:
+
+```
+Jun 14                    Jun 15
+Ha Long Bay   ← title
+                          ← +2 blanks, no title
+We took the boat…         Rain all day.
+```
+
+| Shape after the date line | Meaning |
+| --- | --- |
+| `+0 blank` → text → `+2 blank` → body | title present |
+| `+2 blank` → body | no title |
+
+Structural rather than cosmetic, and therefore more reliable than styling would have
+been. `src/inspect_format.py` reports these shapes as a histogram so the rule can be
+validated against the real archive before the parser depends on it — expect drift over
+ten years of writing, and send non-conforming shapes to a review list rather than
+guessing.
+
+> **Soft line breaks are a trap here.** Shift+Enter produces a line break *inside* a
+> paragraph (`\n` in the text) rather than a new paragraph. Visually identical, but
+> invisible to code that only iterates paragraphs. The probe counts these separately.
 
 **1. No year in the header.** `Jun 14` is ambiguous on its own — but the filename
 carries it (`Ruritania - 2019.docx`), so this is largely solved. File-level metadata is
@@ -342,8 +360,8 @@ Photo EXIF corroborates: a photo of pho timestamped Jun 12 confirms the resoluti
 - [ ] Chunk by journal **entry**, not character count — fall back to size splits only
       for very long entries
 - [ ] Parse the `MMM DD` line; take the year from the filename (`<place> - <YYYY>`)
-- [ ] Detect the optional title on the following line — prefer paragraph style / bold
-      over text heuristics; send ambiguous cases to a review list, don't guess
+- [ ] Detect the optional title via blank-line structure: `+0 blank` after the date
+      means a title follows; `+2 blank` means the body starts directly
 - [ ] Detect year rollover by watching for the month moving backwards (trips crossing
       New Year) — a safety check now, not the primary mechanism
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
