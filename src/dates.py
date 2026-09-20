@@ -36,12 +36,15 @@ MONTH_NUM = {
 # else on the line. The trailing anchor is deliberate: "Jun 15  Ha Long Bay"
 # is left to NEAR_RE, because a same-line title is ambiguous and worth surfacing
 # rather than silently accepting.
+# The separator is \s* rather than \s+ so "Sep.3" parses too. Safe because the
+# line must contain nothing else: a whole line reading "Sep.3" is a date, never
+# prose. Without this it would fail BOTH patterns and vanish silently.
 DATE_RE = re.compile(
-    rf"^\s*({MONTHS})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?\.?\s*$", re.IGNORECASE
+    rf"^\s*({MONTHS})\.?\s*(\d{{1,2}})(?:st|nd|rd|th)?\.?\s*$", re.IGNORECASE
 )
 
 # Begins like a date but carries more on the line.
-NEAR_RE = re.compile(rf"^\s*({MONTHS})\.?\s+(\d{{1,2}})\b", re.IGNORECASE)
+NEAR_RE = re.compile(rf"^\s*({MONTHS})\.?\s*(\d{{1,2}})\b", re.IGNORECASE)
 
 # Begins with a month word with no day following at all.
 MONTHWORD_RE = re.compile(rf"^\s*({MONTHS})\b", re.IGNORECASE)

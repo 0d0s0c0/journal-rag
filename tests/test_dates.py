@@ -17,7 +17,10 @@ VALID = [
     ("Apr 21.", (4, 21)),
     ("Apr 21st", (4, 21)),
     ("Sept. 3", (9, 3)),
+    ("Sep. 3", (9, 3)),
     ("Sep 3", (9, 3)),
+    ("Sep.3", (9, 3)),        # no space — would otherwise vanish silently
+    ("September 3", (9, 3)),
     ("May 1", (5, 1)),
     ("Dec. 28", (12, 28)),
     ("  Jun  4  ", (6, 4)),
