@@ -121,10 +121,36 @@ def probe(path: Path, display: str | None = None) -> None:
 
         shapes[f"date +{gap1}blank -> {_bucket(len1)} +{gap2}blank -> {_bucket(len2)}"] += 1
 
+    # THE decisive measurement. The gap after the date is always 2, so it says
+    # nothing. What matters is the gap BETWEEN body paragraphs: if bodies also
+    # separate with 2 blanks, then "date / 2CR / X / 2CR / Y" is ambiguous and
+    # no structural rule can tell a title from a first paragraph.
+    # Skip the FIRST gap of each entry — that is the title-or-not gap we are
+    # trying to classify, so counting it would beg the question. Gaps from the
+    # second onward are body-internal either way.
+    body_gaps: Counter[int] = Counter()
+    bounds = date_idx + [len(pars)]
+    for a, b in zip(bounds, bounds[1:]):
+        content = [j for j in range(a + 1, b) if (pars[j].text or "").strip()]
+        for x, y in zip(content[1:], content[2:]):
+            body_gaps[y - x - 1] += 1
+
     print(f"line-after format : {dict(after_fmt.most_common(4))}")
     print("entry shapes (most common first):")
     for shape, n in shapes.most_common(6):
         print(f"   {n:4d}x  {shape}")
+
+    print(f"gaps between body paragraphs: {dict(sorted(body_gaps.items()))}")
+    two = body_gaps.get(2, 0)
+    total = sum(body_gaps.values())
+    if total:
+        pct = 100 * two / total
+        if pct > 25:
+            print(f"  !! {pct:.0f}% of body gaps are also 2 blanks — title vs first"
+                  f" paragraph is AMBIGUOUS structurally; heuristics needed")
+        else:
+            print(f"  ok: only {pct:.0f}% of body gaps are 2 blanks — a 2-blank gap"
+                  f" after the first line reliably marks a title")
 
     distinct = set(after_fmt) - set(Counter(_fmt(pars[i]) for i in date_idx))
     print("verdict           : "
