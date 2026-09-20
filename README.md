@@ -304,11 +304,24 @@ sampling — so treat them as timeline evidence only for now.
 The source format is:
 
 ```
-Jun 14                    ← three-letter month + day, own line
+Apr. 21                   ← month + day on its own line (see variants below)
 Ha Long Bay               ← optional title, own line
 We took the boat out early. Two days ago in Strelsau I had
 the best pho of my life at a place near the station...
 ```
+
+Date lines are the **only** structure in the archive — there is no formatting at all —
+so the recogniser in `src/dates.py` is load-bearing and is shared by the probe and the
+parser rather than duplicated. Observed variants, all accepted:
+
+```
+Apr 21      Apr. 21     April 21     Apr 21.     Apr 21st     Sept. 3
+```
+
+The period after the *month* is the common form and was missing from the first pattern
+— it would have matched almost nothing. `tests/test_dates.py` pins both directions:
+these forms must parse, and prose beginning with a month prefix (`Mayonnaise was
+involved`, `Marched up the hill`, `Decided to stay in`) must not.
 
 A three-letter month and day, an optional title on the following line, then the entry.
 Four consequences, in increasing order of difficulty.
