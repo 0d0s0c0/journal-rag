@@ -13,3 +13,13 @@ dependencies = [
     "pyyaml>=6.0.3",
     "rank-bm25>=0.2.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# Tests import `src.*`; add the project root to sys.path so no install is needed.
+pythonpath = ["."]
+testpaths = ["tests"]

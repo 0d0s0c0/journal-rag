@@ -29,17 +29,7 @@ from pathlib import Path
 from docx import Document
 from docx.oxml.ns import qn
 
-# "Jun 14", "Jun 4", "Jun 14." — month abbreviation then day, nothing else.
-MONTHS = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
-
-# Strict: a month abbreviation and a day, and nothing else on the line.
-DATE_RE = re.compile(rf"^\s*({MONTHS})\s+(\d{{1,2}})\s*\.?\s*$", re.IGNORECASE)
-
-# Starts like a date but carries more on the line (e.g. a same-line title).
-NEAR_RE = re.compile(rf"^\s*({MONTHS})[a-z]*\.?\s+(\d{{1,2}})\b", re.IGNORECASE)
-
-# Begins with a month word but no day followed — e.g. "June" alone, "Jun 3rd".
-MONTHWORD_RE = re.compile(rf"^\s*({MONTHS})[a-z]*\b", re.IGNORECASE)
+from src.dates import DATE_RE, MONTHWORD_RE, NEAR_RE
 
 
 def _fmt(par) -> str:
@@ -90,8 +80,6 @@ def probe(path: Path, display: str | None = None) -> None:
             if rest:
                 near[f"month+day followed by {len(rest.split())} more word(s) "
                      f"(same-line title?)"] += 1
-            elif len(m.group(1)) != len(t.split()[0].rstrip(".")):
-                near["full month name, e.g. 'June 16' not 'Jun 16'"] += 1
             else:
                 near["month+day with unexpected trailing characters"] += 1
         elif MONTHWORD_RE.match(t) and len(t.split()) <= 6:
