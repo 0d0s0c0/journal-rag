@@ -9,14 +9,19 @@ go public.
 
 | | |
 | --- | --- |
-| Journal files | 55, all `.docx` (no legacy `.doc`) |
-| Entries | **1,749** |
-| Body text | **~1.07M tokens** |
+| Journal files | 54, all `.docx` (no legacy `.doc`) |
+| Entries | **~1,703** |
+| Body text | **~1.05M tokens** |
 | Photo hyperlinks | **11,901** |
-| Media files | 15,915 `.jpg`, 153 `.mp4`, 22 `.mov` |
-| Archive size | 74 GB |
-| Year folders | 18, spanning 2010–2026 |
+| Media files | ~15,900 `.jpg`, 153 `.mp4`, 22 `.mov` |
+| Archive size | ~74 GB |
+| Year folders | 17, spanning 2010–2026 |
 | Earliest journal | 1994 (predates the media folders) |
+
+> Two items were removed from the archive after the first measurement: a journal that
+> did not belong, and a top-level folder outside the `YYYY/place/` convention. The
+> figures above are the original measurements less those two; re-run
+> `src/inspect_format.py` to confirm exactly.
 
 **~1.07M tokens settles the long-context question.** The archive does not fit in
 `gemma4`'s 256K window — not close. RAG is required on size grounds alone, quite apart
@@ -32,10 +37,12 @@ Sep. 3      Sep.3       Apr. 21, 2010
 ```
 
 Adding inline-year and trailing-punctuation support recovered **49 entries** that had
-been silently merged into their predecessors (1,700 → 1,749).
+been silently merged into their predecessors. Most of those were in the journal since
+removed from the archive; three remain in a file that is still present, so the inline
+year stays supported.
 
-The inline year is load-bearing for one file that has **no year in its filename** — the
-in-text year is its only date source, and must take precedence over the filename.
+When an inline year is present it takes precedence over the year parsed from the
+filename.
 
 ## Parser requirements discovered
 
@@ -47,8 +54,9 @@ in-text year is its only date source, and must take precedence over the filename
    the date and the whole entry on one line (78 and 250 words). Since titles are already
    treated as body, this needs no word-count threshold or classification.
 
-3. **Handle preamble.** Text before the first date line is currently dropped. One file
-   lost 86,000 characters this way when its first date was late in the document.
+3. **Handle preamble.** Text before the first date line is currently dropped. This was
+   observed on a file since removed, but the defect is real and would silently lose the
+   opening of any file whose first date appears late.
 
 4. **Sub-split long entries.** Median entry is ~1,200–3,800 characters, but the largest
    is 16,092. One file holds only 3 entries across 33,631 characters — written in long
@@ -58,14 +66,17 @@ in-text year is its only date source, and must take precedence over the filename
 
 ## Known outliers
 
-- One journal has **no year in its filename** and uses the inline-year date format
-  throughout. It is also the only file with a second paragraph style.
 - One journal predates the media folders by 16 years, so it has no photos to link.
-- **11 of 55 files contain no photo hyperlinks** — the "written in a hurry" case. These
+- **10 of 54 files contain no photo hyperlinks** — the "written in a hurry" case. These
   fall back to folder place/year plus EXIF timestamp matching.
-- A top-level folder does not follow the `YYYY/place/` convention and sits beside the
-  year folders.
+- Three files contain a date hidden behind a soft line break (see requirement 1).
+- One file holds only 3 entries across 33,631 characters — written in long blocks
+  rather than daily.
 - Windows `Thumbs.db` artifacts and one stray `.zip` inside the media tree; both ignorable.
+
+**Removed after the first pass:** a journal that did not belong to the archive, and a
+top-level folder outside the `YYYY/place/` convention. Both were flagged by the
+inventory as outliers before anything was built on them.
 
 ## Media
 
