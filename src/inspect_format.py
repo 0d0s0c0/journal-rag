@@ -95,107 +95,29 @@ def probe(path: Path, display: str | None = None) -> None:
     )
     print(f"hyperlinks        : {n_links}")
 
-    # The shape of each entry: how many blank paragraphs follow the date, how
-    # long the next non-empty line is, then the same again. If a double gap
-    # delimits the header, that pattern will dominate.
-    shapes: Counter[str] = Counter()
-    after_fmt: Counter[str] = Counter()
-
-    for i in date_idx:
-        j = i + 1
-        gap1 = 0
-        while j < len(pars) and not (pars[j].text or "").strip():
-            gap1 += 1
-            j += 1
-        if j >= len(pars):
-            continue
-        len1 = len((pars[j].text or "").strip())
-        after_fmt[_fmt(pars[j])] += 1
-
-        k = j + 1
-        gap2 = 0
-        while k < len(pars) and not (pars[k].text or "").strip():
-            gap2 += 1
-            k += 1
-        len2 = len((pars[k].text or "").strip()) if k < len(pars) else 0
-
-        shapes[f"date +{gap1}blank -> {_bucket(len1)} +{gap2}blank -> {_bucket(len2)}"] += 1
-
-    # THE decisive measurement. The gap after the date is always 2, so it says
-    # nothing. What matters is the gap BETWEEN body paragraphs: if bodies also
-    # separate with 2 blanks, then "date / 2CR / X / 2CR / Y" is ambiguous and
-    # no structural rule can tell a title from a first paragraph.
-    # Skip the FIRST gap of each entry — that is the title-or-not gap we are
-    # trying to classify, so counting it would beg the question. Gaps from the
-    # second onward are body-internal either way.
-    body_gaps: Counter[int] = Counter()
+    # Entries run from one date line to the next, title included — titles are
+    # deliberately NOT classified, so blank-line structure no longer matters.
+    # What matters now is entry size, which drives chunking in Phase 2/3.
     bounds = date_idx + [len(pars)]
-    for a, b in zip(bounds, bounds[1:]):
-        content = [j for j in range(a + 1, b) if (pars[j].text or "").strip()]
-        for x, y in zip(content[1:], content[2:]):
-            body_gaps[y - x - 1] += 1
+    sizes = [
+        sum(len((pars[j].text or "").strip()) for j in range(a + 1, b))
+        for a, b in zip(bounds, bounds[1:])
+    ]
+    sizes = [s for s in sizes if s]
+    if sizes:
+        srt = sorted(sizes)
+        n = len(srt)
+        over = sum(1 for s in srt if s > 2000)
+        print(f"entry size (chars): min={srt[0]} median={srt[n // 2]} "
+              f"p90={srt[min(int(n * 0.9), n - 1)]} max={srt[-1]}")
+        print(f"                    {over}/{n} exceed 2000 chars (need sub-splitting)")
+        print(f"total body chars  : {sum(sizes):,}  (~{sum(sizes) // 4:,} tokens)")
 
-    print(f"line-after format : {dict(after_fmt.most_common(4))}")
-    print("entry shapes (most common first):")
-    for shape, n in shapes.most_common(6):
-        print(f"   {n:4d}x  {shape}")
-
-    print(f"gaps between body paragraphs: {dict(sorted(body_gaps.items()))}")
-    two = body_gaps.get(2, 0)
-    total = sum(body_gaps.values())
-    ambiguous = True
-    if total:
-        pct = 100 * two / total
-        ambiguous = pct > 25
-        if ambiguous:
-            print(f"  !! {pct:.0f}% of body gaps are also 2 blanks — title vs first"
-                  f" paragraph is AMBIGUOUS structurally; heuristics needed")
-        else:
-            print(f"  ok: only {pct:.0f}% of body gaps are 2 blanks — a 2-blank gap"
-                  f" after the first line reliably marks a title")
-
-    # When structure can't decide, these are the signals a classifier would use.
-    # Report their distribution so the thresholds can be calibrated on real data
-    # rather than guessed.
-    if ambiguous:
-        words, ends_punct, short_no_punct = [], 0, 0
-        for i in date_idx:
-            j = i + 1
-            while j < len(pars) and not (pars[j].text or "").strip():
-                j += 1
-            if j >= len(pars):
-                continue
-            t = (pars[j].text or "").strip()
-            w = len(t.split())
-            words.append(w)
-            p = t.endswith((".", "!", "?", "…"))
-            ends_punct += p
-            short_no_punct += (w <= 5 and not p)
-        if words:
-            n = len(words)
-            print(f"  first-line signals over {n} entries:")
-            print(f"    word count      : min={min(words)} "
-                  f"median={sorted(words)[n // 2]} max={max(words)}")
-            print(f"    ends with .!?   : {ends_punct}/{n} ({100 * ends_punct // n}%)")
-            print(f"    <=5 words, no   : {short_no_punct}/{n} "
-                  f"({100 * short_no_punct // n}%)  <- title-like")
-
-    distinct = set(after_fmt) - set(Counter(_fmt(pars[i]) for i in date_idx))
-    print("verdict           : "
-          + ("titles are formatting-distinguishable"
-             if distinct else
-             "no formatting difference — rely on blank-line structure"))
+    styles = Counter(_fmt(p) for p in nonempty)
+    if len(styles) > 1:
+        print(f"styles in use     : {dict(styles.most_common(4))}")
 
 
-def _bucket(n: int) -> str:
-    """Length as a coarse bucket, so nothing about the text itself is revealed."""
-    if n == 0:
-        return "(end)"
-    if n <= 40:
-        return f"short({n})"
-    if n <= 120:
-        return "medium"
-    return "long"
 
 
 def _as_docx(path: Path, tmp: Path) -> Path:
