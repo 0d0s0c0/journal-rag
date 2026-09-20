@@ -285,11 +285,11 @@ sampling — so treat them as timeline evidence only for now.
       to a third party — precisely what this project exists to avoid. Use a USB drive,
       a direct Finder network share, or AirDrop between your own devices.
 - [ ] Copy the whole tree in one operation, preserving structure (see warning above)
-- [x] Inventory: 54 journals, all `.docx`, ~1,703 entries, ~1.05M tokens,
+- [x] Inventory: 54 journals, all `.docx`, 1,703 entries, ~1.07M tokens,
       11,901 photo links — see [`docs/CORPUS.md`](docs/CORPUS.md)
 - [x] Run `src/inspect_format.py` over the archive — every file yielded date lines;
       extending the pattern recovered 49 silently-merged entries
-- [x] **Count total tokens** — ~1.05M, so the archive does *not* fit a 256K context.
+- [x] **Count total tokens** — ~1.07M, roughly 4x a 256K context window.
       RAG is required on size grounds, not only privacy.
 - [ ] Inventory media: counts per year/place, formats (HEIC needs `pillow-heif`)
 - [x] Determine link type: **external hyperlinks** (Word Insert → Link), extracted by
