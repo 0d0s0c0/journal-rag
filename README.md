@@ -184,6 +184,8 @@ Derived artifacts don't look like journals but contain the text verbatim:
 
 Exact commands, rationale, and the problems hit along the way are recorded in
 [`docs/SETUP.md`](docs/SETUP.md) — written to be re-runnable on a fresh machine.
+Measurements from the real archive, and the parser requirements they revealed, are in
+[`docs/CORPUS.md`](docs/CORPUS.md).
 
 ### Phase 0 — Environment
 
@@ -281,12 +283,12 @@ sampling — so treat them as timeline evidence only for now.
       to a third party — precisely what this project exists to avoid. Use a USB drive,
       a direct Finder network share, or AirDrop between your own devices.
 - [ ] Copy the whole tree in one operation, preserving structure (see warning above)
-- [ ] Inventory: journal count, year range, `.doc` vs `.docx` split
-- [ ] Run `src/inspect_format.py` over the archive — reports structure and formatting
-      statistics only, no journal text, so the output is safe to share
-- [ ] **Count total words/tokens** — determines whether the corpus would even fit in a
-      long-context window, which is worth knowing as a correctness baseline to check
-      the RAG pipeline against
+- [x] Inventory: 55 journals, all `.docx`, 1,749 entries, ~1.07M tokens,
+      11,901 photo links — see [`docs/CORPUS.md`](docs/CORPUS.md)
+- [x] Run `src/inspect_format.py` over the archive — every file yielded date lines;
+      extending the pattern recovered 49 silently-merged entries
+- [x] **Count total tokens** — ~1.07M, so the archive does *not* fit a 256K context.
+      RAG is required on size grounds, not only privacy.
 - [ ] Inventory media: counts per year/place, formats (HEIC needs `pillow-heif`)
 - [x] Determine link type: **external hyperlinks** (Word Insert → Link), extracted by
       `src/docx_links.py` — verified against a synthetic journal
