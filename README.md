@@ -540,6 +540,38 @@ while I was in Japan?"* — a good question these entries can answer — filters
 The data is preserved either way; the field is what keeps the two separable. Adding it
 later would mean re-running the whole extraction.
 
+#### One row per named thing, not one per event
+
+A single dinner can carry six separate judgements:
+
+> *"The scallops was ok, the beef (thin and tough) and fries with mushroom sauce was
+> just that… The stew pork… was bland. The fondant too sweet and the crème brulee had
+> the consistency of custard tart."*
+
+Extract a row for each named item rather than one row for "dinner". It makes *"which
+dishes did I dislike?"* answerable, and each row carries its own `evidence`.
+
+Sentiment also **diverges within one venue**. That restaurant's food is −2, but *"The
+old man was nice, explaining the items on the menu"* is a separate `person` row at +1.
+One table with independent rows represents that correctly; a single per-venue rating
+could not.
+
+#### Comparisons are not visits
+
+The journals compare places to other places from other trips:
+
+> *"reminiscent of **Elba**"* · *"like a miniature version of **Vespugia**"* ·
+> *"reminiscent of **Hong Kong** but cleaner"*
+
+Read naively, an extractor records Elba, Vespugia and Hong Kong as places visited that
+day — and *"where did I travel in 2019?"* returns three countries that were never
+visited. That is worse than a missing row: a **confidently wrong fact**, indistinguishable
+in the index from a true one.
+
+The prompt must state explicitly that only places actually visited are recorded, and
+that a place named as a comparison, a memory, or a plan is not a visit. Worth testing
+rather than assuming — this is the kind of instruction models follow only partially.
+
 #### Sentiment is understated, and must be calibrated
 
 Two genuine approvals from the same archive:
@@ -552,6 +584,10 @@ the second as neutral, which quietly drops the mundane-but-liked things out of
 "favourites." **The extraction prompt needs calibration examples taken from the real
 journals**, not generic ones — few-shot pairs showing that "pretty tasty" is positive in
 this writer's register.
+
+The negative end is more explicit and needs less help — *"terrible"*, *"bland"*,
+*"underwhelming"*, *"thin and tough"* — so anchor the scale with a real example from
+each extreme and let the middle calibrate against them.
 
 `evidence` earns its place: it lets an answer say *"the snorkelling at X — you wrote
 'best visibility I've ever seen'"* rather than asserting a preference you cannot check.
@@ -578,6 +614,9 @@ expensive part, and it runs once.
 - [ ] Pin the `type` and `setting` vocabularies in the prompt; reject anything outside them
 - [ ] Calibrate sentiment with few-shot examples drawn from the real journals —
       "pretty tasty" must not score neutral
+- [ ] Rule: record only places actually visited. Comparisons, memories and plans are
+      not visits — and **test it**, rather than trusting the instruction
+- [ ] One row per named item, not per event; allow sentiment to diverge within a venue
 - [ ] Record an `extraction_version` so the pass can be re-run with a better prompt
       later without ambiguity about which rows came from where
 - [ ] Spot-check a sample against memory — a 12B model will miss some enthusiasm and
