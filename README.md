@@ -514,6 +514,7 @@ prompt to maintain, and cross-category questions ("highlights of 2019") need no 
 | `type` | **Controlled vocabulary** — see below. Free text here and the LLM invents fifty near-synonyms, breaking every query. |
 | `name` | The thing itself — a dish, a reef, a museum, a person |
 | `place` | Where it happened, as written |
+| `setting` | `home` \| `out` \| `transit` — see below |
 | `sentiment` | Ordinal −2…+2, not free text. This is what makes "favourite" queryable. |
 | `evidence` | The verbatim phrase that justified the sentiment |
 | `entry_date` / `event_date` | When written vs. when it happened |
@@ -521,6 +522,36 @@ prompt to maintain, and cross-category questions ("highlights of 2019") need no 
 
 **Types:** `food`, `drink`, `activity`, `site`, `museum`, `lodging`, `transport`,
 `person`, `wildlife`, `purchase`, `mishap`, `other`.
+
+#### Why `setting` exists
+
+The archive is not all holidays. Long stays — a two-month spell abroad — produce entries
+about working, cleaning, grocery shopping and cooking dinner at home:
+
+> *Spent the day working on a friend's website and cleaning the kitchen… walked out to
+> the local station Station to buy hotpot ingredients… Pretty tasty.*
+
+Without `setting`, that home-cooked noodle dish lands in *"what were my favourite meals
+and where did I have them?"* next to restaurant meals from a trip, and the answer
+becomes a muddle. With it, that query filters to `setting=out` while *"what did I cook
+while I was in Japan?"* — a good question these entries can answer — filters to
+`setting=home`.
+
+The data is preserved either way; the field is what keeps the two separable. Adding it
+later would mean re-running the whole extraction.
+
+#### Sentiment is understated, and must be calibrated
+
+Two genuine approvals from the same archive:
+
+> *"A very satisfying meal, liberal with the salt, just the way I liked it."*
+> *"Pretty tasty."*
+
+The same feeling, wildly different intensity of language. A 12B model will likely score
+the second as neutral, which quietly drops the mundane-but-liked things out of
+"favourites." **The extraction prompt needs calibration examples taken from the real
+journals**, not generic ones — few-shot pairs showing that "pretty tasty" is positive in
+this writer's register.
 
 `evidence` earns its place: it lets an answer say *"the snorkelling at X — you wrote
 'best visibility I've ever seen'"* rather than asserting a preference you cannot check.
@@ -530,7 +561,8 @@ It also makes wrong extractions visible instead of silently authoritative.
 
 | Question | Query |
 | --- | --- |
-| favourite meals and where | `type=food`, `sentiment>=1`, return `name, place` |
+| favourite meals and where | `type=food`, `setting=out`, `sentiment>=1`, return `name, place` |
+| what did I cook in Japan | `type=food`, `setting=home`, `trip~japan` |
 | favourite snorkelling places | `type=activity`, `name~snorkel`, `sentiment>=1` |
 | museums I liked | `type=museum`, `sentiment>=1` |
 | people met in Ruritania | `type=person`, `place~Ruritania` |
@@ -543,7 +575,9 @@ expensive part, and it runs once.
 - [ ] Parse year/date ranges from questions; filter *before* semantic ranking
 - [ ] Add BM25 keyword search; fuse rankings with vectors
 - [ ] Offline extraction pass over all 1,703 entries into the `experience` table
-- [ ] Pin the `type` vocabulary in the prompt; reject anything outside it
+- [ ] Pin the `type` and `setting` vocabularies in the prompt; reject anything outside them
+- [ ] Calibrate sentiment with few-shot examples drawn from the real journals —
+      "pretty tasty" must not score neutral
 - [ ] Record an `extraction_version` so the pass can be re-run with a better prompt
       later without ambiguity about which rows came from where
 - [ ] Spot-check a sample against memory — a 12B model will miss some enthusiasm and
