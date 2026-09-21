@@ -51,6 +51,28 @@ rest of that line is body text.
 When an inline year is present it takes precedence over the year parsed from the
 filename.
 
+## Year rollover is the normal case
+
+The filename year is the year the trip **started**. Travel is frequently late December
+into January, so a file named `<place> - 2021` holds December 2021 *and* January 2022
+entries. Assigning the filename year to every entry dates those January entries twelve
+months early, with nothing to signal it.
+
+The media tree follows the same convention — January photos stay in the previous year's
+folder:
+
+```
+2020/   2020-12, 2021-01
+2021/   2021-12, 2022-01
+2022/   2022-12, 2023-01
+```
+
+Because both sides share the convention, applying the same rollover rule to journals and
+photos keeps them aligned across a New Year, which is what the date-based photo match
+depends on.
+
+One anomaly: the 2013 folder contains a photo dated 2015-05. Worth a look, but isolated.
+
 ## Parser requirements discovered
 
 1. **Split paragraphs on soft line breaks before scanning.** Three files contain a date
