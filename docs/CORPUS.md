@@ -86,8 +86,53 @@ filename.
 top-level folder outside the `YYYY/place/` convention. Both were flagged by the
 inventory as outliers before anything was built on them.
 
-## Media
+## Media — measured
 
-Photo links are far more plentiful than expected — 11,901 across 44 files. That is a
-dense, explicit text↔image association obtained for free, and it makes the
-timestamp-matching fallback a secondary path rather than the primary one.
+| | Finding |
+| --- | --- |
+| Images | 15,873 `.jpg`. **No HEIC**, so no `pillow-heif` needed. |
+| `DateTimeOriginal` | Present in essentially every readable photo, every year |
+| **GPS latitude/longitude** | **Absent everywhere.** Some files carry a GPS IFD, but it holds only `GPSImgDirection` (compass heading). Location services were off. |
+| Cameras | BlackBerry, Huawei, Panasonic, Sony, Apple, Xiaomi, Google, Samsung across 2010–2026 |
+| Photo links in text | 11,901 across 44 of 54 files |
+
+**The absence of GPS retired a substantial part of the plan** — reverse geocoding, a
+destinations map, and GPS as ground truth for "where was I when." An earlier version of
+this document called EXIF GPS "the highest-value piece of this entire project." It does
+not exist. It also retires the offline-geocoding privacy concern.
+
+What survives is enough: photo date plus the `<year>/<place>/` folder.
+
+> Spotlight (`mdls`) reported no GPS, then a first Pillow check appeared to find it in
+> 2019, then a corrected read of the GPS sub-IFD showed only a compass heading. Only the
+> third check was right. Read the actual tag values, not the presence of an IFD pointer.
+
+## Photo references are ~30% of the text
+
+Photo paths appear inline, mid-sentence, in parentheses. Across five sample entries they
+are **29% of all characters, 42% in one long entry**. Embedded as-is they dominate the
+vector — one entry would embed largely as `vale temple first enclosure root jpg` repeated.
+
+**Strip them from chunk text before embedding; keep them as linked metadata.**
+
+Two path shapes occur, mixed separators: `<year>\<place>\<name>.jpg` and
+`<place>\<name>.jpg`. The latter takes its year from the journal filename.
+
+**The filenames are hand-written captions** — `vale temple - guardian lion.jpg`,
+`old bridge - looking south.jpg`. Better than a vision model would produce, already
+present, free. This substantially undercuts Phase 8.
+
+## Data integrity: 93 corrupt files
+
+15,780 of 15,873 images verify clean. The remaining **93 are all in one 2021 folder**,
+where only 2 of 95 files are valid JPEGs:
+
+```
+readable    2 files:  header ffd8ff (valid JPEG)
+unreadable 93 files:  14 zero-length, 35 all-zero bytes, 44 random headers
+```
+
+Zero-length and zero-filled blocks indicate an **interrupted copy or filesystem damage**,
+not gradual corruption, and it is confined to that one folder. Recovery means checking
+the source drive for intact originals. Unrelated to the RAG work, but it would otherwise
+have surfaced months later as broken image paths.
