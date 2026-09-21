@@ -62,10 +62,8 @@ extraction. See [`docs/SETUP.md`](docs/SETUP.md) for the numbers.
 ```
 .doc/.docx  ──►  clean text  ──►  entry-level chunks + metadata
                                           │
-   photos  ──►  EXIF (date, GPS)  ────────┤
-      │         offline geocode           │
-      └──►  vision captions ──────────────┤
-            (gemma4, batch)               │
+   photos  ──►  EXIF date + folder place ─┤
+                 (no GPS in this archive)  │
                         ┌─────────────────┼─────────────────┐
                         ▼                 ▼                 ▼
                   vector index      keyword index   experience index
@@ -89,45 +87,64 @@ extraction. See [`docs/SETUP.md`](docs/SETUP.md) for the numbers.
 Journals come with photographs, and they are not decoration — they carry data the
 prose does not.
 
-**EXIF is the highest-value piece of this entire project, and it needs no AI.** Every
-photo carries `DateTimeOriginal` and usually GPS coordinates. That is a *verified*
-travel timeline — dates, cities, countries — independent of whether anything was
-written down, and it directly solves the weakness identified above: "where did I travel
-in 2019" needs hard structured data, and photo EXIF is exactly that. It cannot be vague
-or misremembered, and it cross-checks the text: if the writing says "Tuesday" and the
-photos say June 14, the photos win.
+### What the photos actually contain — measured, not assumed
 
-> **Reverse geocoding must be offline.** Turning coordinates into place names via
-> Google or Nominatim would transmit the GPS location of everywhere you have been,
-> including home. Use the `reverse_geocoder` package, which ships a local cities
-> database. This is the single easiest way to accidentally undo the privacy premise of
-> the project.
+| | Finding |
+| --- | --- |
+| `DateTimeOriginal` | Present in essentially every readable photo, every year |
+| **GPS latitude/longitude** | **Absent everywhere.** The GPS IFD exists in some files but holds only `GPSImgDirection` — a compass heading. Location services were off. |
+| Format | All `.jpg`. No HEIC, so no `pillow-heif` needed. |
+| Integrity | 15,780 of 15,873 verify clean. 93 files in one 2021 folder are corrupt — see [`docs/CORPUS.md`](docs/CORPUS.md). |
 
-**Vision captioning** is the second tier. `gemma4:12b` already reports `vision`
-capability with a CLIP projector — no extra model to download. Run each photo through
-it once, offline, and store the description ("a bowl of noodle soup with herbs, street-side
-plastic stools") as text embedded alongside journal chunks. Photos then become
-searchable in the same vector space as the writing, with no separate image-embedding
-infrastructure.
+The absence of GPS retires a plan that appeared here through several revisions: reverse
+geocoding, a destinations map, and GPS as ground truth for "where was I when." None of
+it is possible. It also retires the offline-geocoding privacy concern, which is now moot.
 
-It also does OCR, which matters more than it sounds: restaurant signs, menus, receipts,
-train tickets. "The Copper Pot" may exist only on a shopfront in a photograph and never in
-the text.
+**What survives is sufficient.** Photo date plus the `<year>/<place>/` folder gives when
+and where, which is all the linking needs.
 
-**Association** — linking a photo to the entry it belongs to — depends on where the
-photos live:
+### Association: two paths, both simple
 
-| Case | Linking method | Quality |
-| --- | --- | --- |
-| Journal links the photo | External hyperlink in the `.docx` — gives both the target path and the paragraph it sits in (`src/docx_links.py`) | Exact |
-| Journal written in a hurry, no link | Folder `<year>/<place>` narrows the trip; EXIF timestamp matches the day's entry | Good, looser |
+| Case | Method |
+| --- | --- |
+| Journal links its photos (44 of 54 files, 11,901 links) | The inline hyperlink gives the target path *and* the paragraph it sits in — exact placement within the entry |
+| No links (10 of 54 files, mostly recent) | Match photo `DateTimeOriginal` to the entry with that date |
 
-Link targets are parsed rather than resolved by Word, so stale Windows paths
-(`file:///C:/Users/me/Journals/2019/Zenda%20Bay/IMG_9876.jpg`) re-root onto the
-local archive by keeping the trailing `<year>/<place>/<filename>`.
+Deliberately nothing more elaborate. Date-to-date matching is enough.
 
-Practical notes: iPhone photos are usually **HEIC** and need `pillow-heif` to read; and
-any photo shared with "remove location data" has no GPS.
+Link targets are parsed rather than resolved by Word, so stale Windows paths re-root
+onto the local archive by keeping the trailing `<year>/<place>/<filename>`. Two shapes
+occur: `<year>\<place>\<name>.jpg` and `<place>\<name>.jpg` — the latter takes its year
+from the journal's filename.
+
+> **Camera clocks.** A camera left on home time during a foreign trip shifts photos to
+> the wrong day. Detectable by checking whether a trip's photo dates align with its
+> entry dates, and correctable per-trip as a fixed offset. Worth checking before
+> trusting the date match.
+
+### The filenames are already captions
+
+```
+vale temple - guardian lion.jpg          phare syldavian circus - acrobatics.jpg
+vale temple - first enclosure root.jpg     old bridge - looking south.jpg
+```
+
+Written by hand, at the time, by someone who was there. A vision model would produce
+"ancient stone temple with tree roots"; these are better, already exist, and cost
+nothing. **This substantially undercuts the case for Phase 8 vision captioning** — which
+drops from "enhancement" to "probably unnecessary."
+
+### Photo references are ~30% of the text, and must be stripped before embedding
+
+Photo paths appear inline, mid-sentence, in parentheses. Measured across five sample
+entries they are **29% of all characters — 42% in one long entry.**
+
+Embedded as-is, such an entry's vector is dominated by `vale temple first enclosure root
+jpg` repeated eleven times rather than by what was written about tree roots and rain.
+Semantic search over it would be badly degraded with nothing to indicate why.
+
+**So: strip photo references from chunk text before embedding; retain them as linked
+metadata.** This belongs in Phase 1, not as a Phase 3 discovery.
 
 ## Stack
 
@@ -238,28 +255,20 @@ year-inference problem from Phase 2. Rollover detection remains as a safety chec
 trips crossing New Year, but the base year is known rather than guessed.
 
 **The folder tree maps media → place → year with no inference at all.**
-`2019/Strelsau/IMG_1234.jpg` gives location and year without reading EXIF, which means it
-still works for photos whose GPS was stripped, and it cross-checks EXIF where both
-exist.
+`2019/Strelsau/IMG_1234.jpg` gives place and year directly. Since the archive contains
+**no GPS whatsoever**, this is the only location data there is.
 
-**Place folder names are a vocabulary, but not a geography.** Granularity is
-inconsistent — a folder may be a city (`Strelsau`), a region (`Northmark`), or a country.
-They are *labels for a trip*, useful for display and as a fuzzy matching signal, but
-they cannot be treated as structured location data: "where did I travel in 2019?"
-answered from folder names alone returns a mix of regions and cities.
-
-**EXIF GPS is the only consistent geography in the archive.** Coordinates
-reverse-geocoded offline yield a real city, region and country for every photo,
-whatever the folder was named. Resolution order:
+**Place folder names are labels, not geography.** Granularity is inconsistent — a folder
+may be a city (`Strelsau`), a region (`Northmark`), or a country. So "where did I travel
+in 2019?" answered from folder names returns a mix of the three. There is no GPS to
+normalise against; the honest options are to accept the mix, or to resolve places during
+Phase 5 extraction using what the text itself says.
 
 | Source | Gives | Trust |
 | --- | --- | --- |
-| EXIF GPS → offline geocode | Real city / region / country | Ground truth |
-| Folder name | The trip label | Display; unreliable as geography |
-| Text mentions | Places written about | Needs resolving against the above |
-
-This is a substantive argument for doing the EXIF work early rather than treating it
-as a nice-to-have.
+| Folder name | The trip label, mixed granularity | The only location metadata available |
+| Text mentions | Places written about, often precise | Richer, needs extraction |
+| EXIF GPS | — | **Does not exist in this archive** |
 
 > **Preserve the directory structure when transferring.** Copy the whole archive in
 > one operation from the root rather than moving journals and media separately.
@@ -271,19 +280,20 @@ as a nice-to-have.
 > local archive correctly. Preserving the tree keeps that mapping aligned; it is not
 > make-or-break.
 
-#### Photo association: two tiers
+#### Photo association
 
-Some journals link their photos; others (written in a hurry) do not.
+Older journals link their photos inline; newer ones (written in a hurry) do not, but
+their photos still exist in the folder tree and should be included.
 
-| Case | Method | Quality |
-| --- | --- | --- |
-| Journal links the photo | Extract the relative path from the `.docx` | Exact — text and image explicitly paired |
-| Embedded image | Extract with document position | Exact |
-| No link | Folder place + year → narrow to trip; EXIF timestamp → match to that day's entry | Good, looser |
+| Case | Method |
+| --- | --- |
+| Journal links the photo | Extract the relative path from the `.docx`, with its paragraph position |
+| No link | Match photo `DateTimeOriginal` to the entry with that date |
 
-**Videos** (`.mov`, `.mp4`) carry creation-date and often GPS metadata just like stills,
-so they feed the timeline identically. Captioning them is a much larger job — frame
-sampling — so treat them as timeline evidence only for now.
+Nothing more elaborate — date-to-date is enough.
+
+**Videos** (`.mov`, `.mp4`) carry creation dates and attach the same way. Captioning
+them would mean frame sampling; out of scope.
 
 #### Steps
 
@@ -298,7 +308,9 @@ sampling — so treat them as timeline evidence only for now.
       extending the pattern recovered 49 silently-merged entries
 - [x] **Count total tokens** — ~1.07M, roughly 4x a 256K context window.
       RAG is required on size grounds, not only privacy.
-- [ ] Inventory media: counts per year/place, formats (HEIC needs `pillow-heif`)
+- [x] Inventory media: 15,873 `.jpg` (no HEIC), dates present, **no GPS anywhere**
+- [ ] **Strip inline photo references from chunk text** — they are ~30% of characters
+      and would dominate the embeddings
 - [x] Determine link type: **external hyperlinks** (Word Insert → Link), extracted by
       `src/docx_links.py` — verified against a synthetic journal
 - [ ] Convert `.docx` via python-docx (paragraphs only — the journals carry no
@@ -424,10 +436,9 @@ Photo EXIF corroborates: a photo of noodle soup timestamped Jun 12 confirms the 
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
 - [ ] Take the trip label from the filename and media folder names — treat as a label,
       not geography; granularity is inconsistent (city / region / country)
-- [ ] Resolve real geography from EXIF GPS via offline reverse geocoding; store
-      city, region and country as separate fields rather than one place string
-- [ ] Read photo EXIF: `DateTimeOriginal` + GPS → offline reverse geocode to
-      city/country. No AI needed; produces a verified travel timeline.
+- [ ] Check each trip for a camera-clock offset before trusting the date match
+- [ ] Read photo `DateTimeOriginal`; match to the entry with that date. Place comes
+      from the `<year>/<place>/` folder — there is no GPS to geocode.
 - [ ] Record `entry_date` for every chunk; leave `event_date` resolution to Phase 5
 - [ ] Attach metadata: `entry_date`, `year`, `month`, `source_file`, `trip`
 - [ ] Prepend context to chunk text so each is interpretable alone
@@ -524,8 +535,7 @@ expensive part, and it runs once.
       against the entry date, and store the result as `event_date`. Facts are indexed
       by when they *happened*, not by when they were written about.
 - [ ] Cross-check resolved dates against photo EXIF where a photo exists
-- [ ] Load photo EXIF (dates, coordinates, place names) into the facts table — this is
-      ground truth for "where was I when", stronger than anything parsed from prose
+- [ ] Load photo dates and folder places into the experience index
 - [ ] Route by question type: aggregation → facts table, open recall → hybrid search
 - [ ] Return photo paths alongside answers, linked by document position or timestamp
 
@@ -543,8 +553,8 @@ expensive part, and it runs once.
 - [ ] CLI first — answers cite entry dates and print photo file paths
 - [ ] Local web UI: chat box, citations that open the source entry, photo thumbnails
       shown inline (the terminal can't, a browser can)
-- [ ] Extras: map of destinations (EXIF GPS makes this nearly free), timeline,
-      "on this day N years ago", incremental re-indexing
+- [ ] Extras: timeline, "on this day N years ago", incremental re-indexing.
+      A destinations map is **not** possible — there is no GPS in the archive.
 
 #### The delivery fork: local UI, or connect to a hosted assistant?
 
