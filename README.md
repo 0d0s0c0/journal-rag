@@ -250,9 +250,10 @@ Measurements from the real archive, and the parser requirements they revealed, a
 
 This layout does a lot of work for us:
 
-**The year is in the filename.** `Ruritania - 2019.docx` all but eliminates the
-year-inference problem from Phase 2. Rollover detection remains as a safety check for
-trips crossing New Year, but the base year is known rather than guessed.
+**The year is in the filename** — but it is the year the trip *started*. Travel is often
+late December into January, so `<place> - 2021.docx` contains both 2021 and 2022
+entries. The base year is known rather than guessed, but rollover detection is required,
+not optional.
 
 **The folder tree maps media → place → year with no inference at all.**
 `2019/Strelsau/IMG_1234.jpg` gives place and year directly. Since the archive contains
@@ -400,10 +401,26 @@ carries it (`Ruritania - 2019.docx`), so this is largely solved. File-level meta
 load-bearing: any file whose year cannot be parsed from its name becomes a manual
 review item rather than a guess.
 
-**2. Year rollover.** Entries running `Dec 28` → `Jan 3` cross a year boundary inside a
-single file. Assigning the file's year to every entry would date that January entry
-twelve months early, silently. Process entries in order and increment the year whenever
-the month moves backwards.
+**2. Year rollover — common, not an edge case.** The filename year is the year the trip
+*started*. Travel is frequently late December into January, so a file named
+`<place> - 2021` holds both December 2021 and January 2022 entries. Assigning the
+filename year to every entry would date those January entries **twelve months early**,
+silently.
+
+Rule: process entries in document order and increment the year whenever the month moves
+backwards (`Dec` → `Jan`).
+
+Confirmed in the media tree, where the same convention holds — January photos stay in
+the previous year's folder:
+
+```
+2020/   photos from 2020-12 and 2021-01
+2021/   photos from 2021-12 and 2022-01
+2022/   photos from 2022-12 and 2023-01
+```
+
+Applying the same rollover rule to journals and photos keeps both sides aligned, which
+is what makes the date-based photo match work across a New Year.
 
 **3. Relative dates — the one that breaks the naive model.** "Two days ago in Strelsau I
 had the best noodle soup of my life" means the *event* happened on Jun 12, while the *text*
@@ -431,8 +448,8 @@ Photo EXIF corroborates: a photo of noodle soup timestamped Jun 12 confirms the 
 - [ ] Parse the `MMM DD` line; take the year from the filename (`<place> - <YYYY>`)
 - [ ] Treat everything between one date line and the next as the entry, title included
       — no title classification (see above)
-- [ ] Detect year rollover by watching for the month moving backwards (trips crossing
-      New Year) — a safety check now, not the primary mechanism
+- [ ] **Detect year rollover** — the filename year is the trip's *start* year, and
+      Dec→Jan travel is common. Increment the year when the month moves backwards.
 - [ ] Flag files whose year cannot be parsed from the name — review, don't guess
 - [ ] Take the trip label from the filename and media folder names — treat as a label,
       not geography; granularity is inconsistent (city / region / country)
