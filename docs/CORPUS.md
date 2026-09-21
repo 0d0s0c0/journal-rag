@@ -15,7 +15,7 @@ go public.
 | Photo hyperlinks | **11,901** |
 | Files with no photo links | 10 of 54 |
 | Entries over 2,000 chars | **764 (44%)** |
-| Media files | 15,873 `.jpg`, 153 `.mp4`, 22 `.mov` |
+| Media files | 15,854 `.jpg`, 151 `.mp4`, 22 `.mov` — all verified readable |
 | Archive size | ~74 GB |
 | Year folders | 17, spanning 2010–2026 |
 | Earliest journal | 1994 (predates the media folders) |
@@ -112,7 +112,7 @@ inventory as outliers before anything was built on them.
 
 | | Finding |
 | --- | --- |
-| Images | 15,873 `.jpg`. **No HEIC**, so no `pillow-heif` needed. |
+| Images | 15,854 `.jpg`, all readable. **No HEIC**, so no `pillow-heif` needed. |
 | `DateTimeOriginal` | Present in essentially every readable photo, every year |
 | **GPS latitude/longitude** | **Absent everywhere.** Some files carry a GPS IFD, but it holds only `GPSImgDirection` (compass heading). Location services were off. |
 | Cameras | BlackBerry, Huawei, Panasonic, Sony, Apple, Xiaomi, Google, Samsung across 2010–2026 |
@@ -144,17 +144,30 @@ Two path shapes occur, mixed separators: `<year>\<place>\<name>.jpg` and
 `old bridge - looking south.jpg`. Better than a vision model would produce, already
 present, free. This substantially undercuts Phase 8.
 
-## Data integrity: 93 corrupt files
+## Data integrity — repaired
 
-15,780 of 15,873 images verify clean. The remaining **93 are all in one 2021 folder**,
-where only 2 of 95 files are valid JPEGs:
+A first scan found **93 unreadable files**, all inside one 2021 folder, where only 2 of
+95 JPEGs were valid:
 
 ```
 readable    2 files:  header ffd8ff (valid JPEG)
 unreadable 93 files:  14 zero-length, 35 all-zero bytes, 44 random headers
 ```
 
-Zero-length and zero-filled blocks indicate an **interrupted copy or filesystem damage**,
-not gradual corruption, and it is confined to that one folder. Recovery means checking
-the source drive for intact originals. Unrelated to the RAG work, but it would otherwise
-have surfaced months later as broken image paths.
+Zero-length and zero-filled blocks indicate an **interrupted copy or filesystem damage**
+rather than gradual corruption, and it was confined to that one folder — the other
+15,780 images verified clean.
+
+Re-copied from the source drive: **74 of the 93 recovered.** The remaining 19 had no
+intact counterpart and are lost from the archive. Current state:
+
+```
+checked    : 15,854
+readable   : 15,854
+unreadable : 0
+```
+
+Worth knowing: nothing in the pipeline would have caught this. A corrupt photo produces
+a broken path months later, not an error. `src/verify_images.py` exists so the check is
+one command, before and after any copy.
+

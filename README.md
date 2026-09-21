@@ -94,7 +94,7 @@ prose does not.
 | `DateTimeOriginal` | Present in essentially every readable photo, every year |
 | **GPS latitude/longitude** | **Absent everywhere.** The GPS IFD exists in some files but holds only `GPSImgDirection` — a compass heading. Location services were off. |
 | Format | All `.jpg`. No HEIC, so no `pillow-heif` needed. |
-| Integrity | 15,780 of 15,873 verify clean. 93 files in one 2021 folder are corrupt — see [`docs/CORPUS.md`](docs/CORPUS.md). |
+| Integrity | All 15,854 verify readable. 93 corrupt files were found in one 2021 folder and 74 recovered from the source drive — see [`docs/CORPUS.md`](docs/CORPUS.md). |
 
 The absence of GPS retires a plan that appeared here through several revisions: reverse
 geocoding, a destinations map, and GPS as ground truth for "where was I when." None of
