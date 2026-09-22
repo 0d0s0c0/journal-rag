@@ -379,6 +379,20 @@ def main() -> None:
         print(f"corrections        : {len(used)} applied"
               + (f", {len(missing)} unmatched: {sorted(missing)}" if missing else ""))
 
+        # Re-derive the sequence flags. Correcting an entry can resolve its
+        # neighbours too, and a warning that is no longer true is worse than no
+        # warning — it sends you looking for a problem that has been fixed.
+        by_source: dict[str, list[Entry]] = {}
+        for e in all_entries:
+            by_source.setdefault(e.source_file, []).append(e)
+        for group in by_source.values():
+            for e in group:
+                e.warnings = [w for w in e.warnings
+                              if not w.startswith(("date_out_of_sequence",
+                                                   "suspect_month_typo",
+                                                   "duplicate_date"))]
+            _flag_date_outliers(group)
+
     counts: dict[str, int] = {}
     for e in all_entries:
         for w in e.warnings:
