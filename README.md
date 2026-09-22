@@ -319,7 +319,13 @@ them would mean frame sampling; out of scope.
 - [ ] Extract embedded images and link targets, recording position in the document
 - [ ] Convert legacy `.doc` via `textutil`
 - [ ] Quality pass: encodings, stray artifacts, entries the date regex missed
-- [ ] Write a manifest; flag anything that converted badly
+- [x] Write a manifest; flag anything that converted badly
+- [x] **Date corrections without touching the source.** The journals contain a few
+      mistyped date headers — a month slip while the day continues the sequence.
+      `journal-data/corrections.txt` holds `<entry-id>: YYYY-MM-DD` overrides applied
+      at conversion time, so originals stay read-only and unmodified, no editor
+      round-trip risks the hyperlinks, and every fix is reviewable and reversible.
+      The original value is preserved in the entry's warnings.
 
 *The least glamorous, highest-leverage phase. Garbage here poisons everything downstream.*
 

@@ -309,6 +309,50 @@ def _build(*, idx, stem, trip, source, month, day, year, inline, block, warnings
 
 # ── driver ───────────────────────────────────────────────────────────────────
 
+def load_corrections(path: Path) -> dict[str, str]:
+    """Read `entry-id: YYYY-MM-DD` overrides, one per line.
+
+    Journals contain occasional mistyped date headers — a month slip while the
+    day continues the sequence. Rather than editing the source documents (which
+    risks the hyperlink relationships, and means unlocking a read-only archive),
+    corrections live in a separate file that is applied at conversion time.
+    Reviewable, reversible, and the originals remain the record.
+    """
+    if not path.exists():
+        return {}
+    out: dict[str, str] = {}
+    for n, line in enumerate(path.read_text().splitlines(), 1):
+        line = line.split("#!")[0].strip() if "#!" in line else line.strip()
+        if not line or line.startswith("//"):
+            continue
+        if ":" not in line:
+            print(f"  corrections:{n}: skipped, no ':' -> {line!r}")
+            continue
+        key, _, val = line.partition(":")
+        val = val.strip()
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", val):
+            print(f"  corrections:{n}: skipped, not YYYY-MM-DD -> {val!r}")
+            continue
+        out[key.strip()] = val
+    return out
+
+
+def apply_corrections(entries: list[Entry], corrections: dict[str, str]) -> set[str]:
+    """Apply date overrides; return the ids that matched."""
+    used: set[str] = set()
+    for e in entries:
+        new = corrections.get(e.id)
+        if not new:
+            continue
+        used.add(e.id)
+        e.warnings = [w for w in e.warnings
+                      if not w.startswith(("date_out_of_sequence", "suspect_month_typo"))]
+        e.warnings.append(f"date_corrected:from={e.entry_date}")
+        e.entry_date = new
+        e.month_day = new[5:]
+    return used
+
+
 def main() -> None:
     dry = "--dry-run" in sys.argv
     root = Path.home() / "playground/journal-data"
@@ -327,6 +371,13 @@ def main() -> None:
             continue
         all_entries.extend(entries)
         per_file.append((f.name, len(entries), sum(len(e.photos) for e in entries), fw))
+
+    corrections = load_corrections(root / "corrections.txt")
+    if corrections:
+        used = apply_corrections(all_entries, corrections)
+        missing = set(corrections) - used
+        print(f"corrections        : {len(used)} applied"
+              + (f", {len(missing)} unmatched: {sorted(missing)}" if missing else ""))
 
     counts: dict[str, int] = {}
     for e in all_entries:
