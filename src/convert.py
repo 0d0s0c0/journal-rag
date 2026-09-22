@@ -36,6 +36,7 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 
 from src.dates import DATE_RE, parse_date_line
+from src.photo_dates import load as load_photo_dates
 
 MEDIA_SUFFIXES = {
     "jpg", "jpeg", "png", "heic", "heif", "gif", "tif", "tiff",
@@ -144,9 +145,53 @@ def normalise_path(target: str) -> str:
     return "/".join(parts[-3:])
 
 
+class MediaIndex:
+    """Resolve link targets against the files that actually exist.
+
+    Word recorded paths as they were when written, and they do not all survive
+    verbatim: some omit the year (`strelsau\\x.jpg` for `2012/strelsau/x.jpg`),
+    some use a different root (`pictures\\...`). Matching on the literal string
+    loses 12% of links, so resolution falls back through progressively looser
+    forms and records which one succeeded.
+    """
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.exact: set[str] = set()
+        self.by_tail: dict[str, list[str]] = {}
+        self.by_name: dict[str, list[str]] = {}
+        for f in root.rglob("*"):
+            if f.suffix.lower().lstrip(".") not in MEDIA_SUFFIXES or f.name.startswith("."):
+                continue
+            rel = f.relative_to(root).as_posix()
+            self.exact.add(rel)
+            parts = rel.split("/")
+            if len(parts) >= 2:
+                self.by_tail.setdefault("/".join(parts[-2:]).lower(), []).append(rel)
+            self.by_name.setdefault(parts[-1].lower(), []).append(rel)
+
+    def resolve(self, path: str, year: int | None) -> tuple[str, str]:
+        """Return (resolved path, how). `how` is 'missing' when nothing matched."""
+        if path in self.exact:
+            return path, "exact"
+        parts = path.split("/")
+        if year and len(parts) == 2:
+            cand = f"{year}/{path}"
+            if cand in self.exact:
+                return cand, "year_prefix"
+        if len(parts) >= 2:
+            hits = self.by_tail.get("/".join(parts[-2:]).lower(), [])
+            if len(hits) == 1:
+                return hits[0], "place_tail"
+        hits = self.by_name.get(parts[-1].lower(), [])
+        if len(hits) == 1:
+            return hits[0], "basename"
+        return path, "ambiguous" if hits else "missing"
+
+
 # ── the parse ────────────────────────────────────────────────────────────────
 
-def convert_file(path: Path) -> tuple[list[Entry], list[str]]:
+def convert_file(path: Path, media: MediaIndex | None = None) -> tuple[list[Entry], list[str]]:
     """Parse one journal into entries plus file-level warnings."""
     file_warnings: list[str] = []
     stem = path.stem
@@ -190,6 +235,7 @@ def convert_file(path: Path) -> tuple[list[Entry], list[str]]:
             idx=0, stem=stem, trip=trip, source=path.name,
             month=None, day=None, year=None, inline="",
             block=lines[: starts[0][0]], warnings=["preamble"],
+            media=media, file_year=base_year,
         ))
 
     bounds = [s[0] for s in starts] + [len(lines)]
@@ -222,6 +268,7 @@ def convert_file(path: Path) -> tuple[list[Entry], list[str]]:
             idx=n + 1, stem=stem, trip=trip, source=path.name,
             month=month, day=day, year=year, inline=inline,
             block=lines[start + 1: end], warnings=warnings,
+            media=media, file_year=base_year,
         ))
 
     _flag_date_outliers(entries)
@@ -280,23 +327,33 @@ def _flag_date_outliers(entries: list[Entry]) -> None:
                 break
 
 
-def _build(*, idx, stem, trip, source, month, day, year, inline, block, warnings):
+def _build(*, idx, stem, trip, source, month, day, year, inline, block, warnings,
+           media=None, file_year=None):
     raw_lines = ([inline] if inline else []) + [ln for ln, _ in block]
     targets = [t for _, ts in block for t in ts]
 
     clean, inline_refs = strip_photo_refs("\n".join(raw_lines))
     text = normalise(clean)
 
-    photos = [{"path": normalise_path(t), "source": "link"} for t in targets]
+    def _add(raw: str, origin: str):
+        p = normalise_path(raw)
+        if not p:
+            return None
+        how = "unchecked"
+        if media is not None:
+            p, how = media.resolve(p, file_year)
+        return {"path": p, "source": origin, "resolved": how}
+
+    photos = [d for d in (_add(t, "link") for t in targets) if d]
     seen = {p["path"] for p in photos}
     for ref in inline_refs:
         for part in re.split(r"\s*,\s*", ref.strip("() ")):
             if "." not in part:
                 continue
-            p = normalise_path(part)
-            if p and p not in seen:
-                seen.add(p)
-                photos.append({"path": p, "source": "inline"})
+            d = _add(part, "inline")
+            if d and d["path"] not in seen:
+                seen.add(d["path"])
+                photos.append(d)
 
     if not photos:
         warnings = warnings + ["no_photos"]
@@ -382,16 +439,39 @@ def main() -> None:
     if not files:
         sys.exit(f"no journals found in {raw}")
 
+    media = MediaIndex(raw)
+    print(f"media files indexed: {len(media.exact):,}")
+
     all_entries: list[Entry] = []
     per_file: list[tuple[str, int, int, list[str]]] = []
     for f in files:
         try:
-            entries, fw = convert_file(f)
+            entries, fw = convert_file(f, media)
         except Exception as e:                    # keep going across the archive
             per_file.append((f.name, 0, 0, [f"ERROR {type(e).__name__}"]))
             continue
         all_entries.extend(entries)
         per_file.append((f.name, len(entries), sum(len(e.photos) for e in entries), fw))
+
+    # Entries with no links still have photos in the folder tree. Attach them by
+    # date — validated at 94.8% exact against the entries whose links are known.
+    # Only entries with no links at all are touched; where the writer linked
+    # photos deliberately, that selection is left as it stands.
+    pdates = load_photo_dates(raw, root / "photo_dates.json")
+    attached = 0
+    for e in all_entries:
+        if e.photos or not e.entry_date:
+            continue
+        same_day = pdates.get(e.entry_date, [])
+        if not same_day:
+            continue
+        e.photos = [{"path": p, "source": "date", "resolved": "exact"} for p in same_day]
+        e.warnings = [w for w in e.warnings if w != "no_photos"]
+        e.warnings.append("photos_by_date")
+        attached += len(same_day)
+    if attached:
+        print(f"photos by date     : {attached:,} attached to "
+              f"{sum(1 for e in all_entries if 'photos_by_date' in e.warnings)} entries")
 
     corrections = load_corrections(root / "corrections.txt")
     if corrections:
@@ -425,6 +505,13 @@ def main() -> None:
     print(f"text chars         : {sum(e.chars for e in all_entries):,} "
           f"(~{sum(e.chars for e in all_entries)//4:,} tokens)")
     print(f"entries w/o a date : {sum(1 for e in all_entries if not e.entry_date)}")
+    res: dict[str, int] = {}
+    for e in all_entries:
+        for ph in e.photos:
+            res[ph.get("resolved", "?")] = res.get(ph.get("resolved", "?"), 0) + 1
+    print("photo resolution   :")
+    for k, v in sorted(res.items(), key=lambda x: -x[1]):
+        print(f"    {v:6,}  {k}")
     print("warnings           :")
     for w, n in sorted(counts.items(), key=lambda x: -x[1]):
         print(f"    {n:6d}  {w}")

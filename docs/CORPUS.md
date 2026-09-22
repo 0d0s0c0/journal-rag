@@ -171,3 +171,51 @@ Worth knowing: nothing in the pipeline would have caught this. A corrupt photo p
 a broken path months later, not an error. `src/verify_images.py` exists so the check is
 one command, before and after any copy.
 
+
+## Photo association — results
+
+| | |
+| --- | --- |
+| Photos attached to entries | **14,305** |
+| ...via journal hyperlinks | 11,906 |
+| ...by same-day date match | 2,399, across 178 entries |
+| Entries with no photos | 578 (34%) |
+
+**Date matching was validated before being relied on.** Across ~11,000 photos whose
+hyperlinks already identify the correct entry, the photo's date equals the entry's date
+**94.8%** of the time and falls within one day **99.2%** of the time. No systematic
+camera-clock offset exists, so a same-day match is sound. It is applied only to entries
+with no links at all — where photos were deliberately chosen, that selection stands.
+
+### Link targets do not all resolve verbatim
+
+Matching link targets as literal strings loses 12% of them. Word stored paths as they
+were at the time: some omit the year (`strelsau\x.jpg` for `2012/strelsau/x.jpg`), some
+use a different root. Resolution falls back through progressively looser forms and
+records which succeeded:
+
+```
+13,649  exact
+   527  place_tail     <- <place>/<file> matched under a different year
+    23  basename       <- unique filename match anywhere
+   105  missing
+     1  ambiguous
+```
+
+From 1,449 unresolved down to 106.
+
+### The 578 entries without photos are quiet days, not a gap
+
+```
+median chars, entries WITH photos   : 2,263
+median chars, entries WITHOUT photos:   813
+```
+
+A third the length — working, resting, travel logistics. The exception is 1994, which
+predates digital cameras, so no photos exist for that year at all.
+
+### One impossible date
+
+A journal contained `Feb. 29` in a non-leap year. It parsed happily — the day was in
+1..31 — and would have raised deep inside a later phase. The converter now validates
+against the calendar and suggests the nearest valid day.
