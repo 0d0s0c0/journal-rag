@@ -23,9 +23,11 @@ anything questionable can be grepped for and checked by hand.
 
 from __future__ import annotations
 
+import calendar
 import json
 import re
 import sys
+from datetime import date as _date
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
@@ -237,7 +239,14 @@ def _flag_date_outliers(entries: list[Entry]) -> None:
     correction is recorded. Nothing is rewritten: the journals are the record,
     and a wrong auto-correction is worse than a flagged oddity.
     """
-    dated = [e for e in entries if e.entry_date]
+    def _valid(e):
+        try:
+            _date.fromisoformat(e.entry_date or "")
+            return True
+        except ValueError:
+            return False
+
+    dated = [e for e in entries if _valid(e)]
     d = [e.entry_date for e in dated]
 
     for i in range(1, len(d)):
@@ -294,6 +303,18 @@ def _build(*, idx, stem, trip, source, month, day, year, inline, block, warnings
 
     slug = re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-")
     date_iso = f"{year:04d}-{month:02d}-{day:02d}" if (year and month) else None
+
+    # A day in 1..31 is not necessarily a real date. One journal reads "Feb. 29"
+    # in a non-leap year, which parsed happily and would have raised deep inside
+    # a later phase. Flag it with the nearest valid day rather than guessing.
+    if date_iso:
+        try:
+            _date.fromisoformat(date_iso)
+        except ValueError:
+            last = calendar.monthrange(year, month)[1]
+            warnings = warnings + [
+                f"invalid_date:suggest={year:04d}-{month:02d}-{min(day, last):02d}"
+            ]
     return Entry(
         id=f"{slug}#{idx:04d}",
         source_file=source,
