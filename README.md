@@ -541,12 +541,12 @@ The archive is not all holidays. Long stays — a two-month spell abroad — pro
 about working, cleaning, grocery shopping and cooking dinner at home:
 
 > *Spent the day working on a friend's website and cleaning the kitchen… walked out to
-> the local station Station to buy hotpot ingredients… Pretty tasty.*
+> the local station to buy hotpot ingredients… Pretty tasty.*
 
 Without `setting`, that home-cooked noodle dish lands in *"what were my favourite meals
 and where did I have them?"* next to restaurant meals from a trip, and the answer
 becomes a muddle. With it, that query filters to `setting=out` while *"what did I cook
-while I was in Japan?"* — a good question these entries can answer — filters to
+while I was in Syldavia?"* — a good question these entries can answer — filters to
 `setting=home`.
 
 The data is preserved either way; the field is what keeps the two separable. Adding it
@@ -573,9 +573,9 @@ could not.
 The journals compare places to other places from other trips:
 
 > *"reminiscent of **Elba**"* · *"like a miniature version of **Vespugia**"* ·
-> *"reminiscent of **Hong Kong** but cleaner"*
+> *"reminiscent of **Borduria** but cleaner"*
 
-Read naively, an extractor records Elba, Vespugia and Hong Kong as places visited that
+Read naively, an extractor records Elba, Vespugia and Borduria as places visited that
 day — and *"where did I travel in 2019?"* returns three countries that were never
 visited. That is worse than a missing row: a **confidently wrong fact**, indistinguishable
 in the index from a true one.
@@ -610,7 +610,7 @@ It also makes wrong extractions visible instead of silently authoritative.
 | Question | Query |
 | --- | --- |
 | favourite meals and where | `type=food`, `setting=out`, `sentiment>=1`, return `name, place` |
-| what did I cook in Japan | `type=food`, `setting=home`, `trip~japan` |
+| what did I cook in Syldavia | `type=food`, `setting=home`, `trip~syldavia` |
 | favourite snorkelling places | `type=activity`, `name~snorkel`, `sentiment>=1` |
 | museums I liked | `type=museum`, `sentiment>=1` |
 | people met in Ruritania | `type=person`, `place~Ruritania` |

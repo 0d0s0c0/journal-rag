@@ -20,7 +20,7 @@ Three decisions, each grounded in what the archive actually looks like:
 
   * Every chunk is prefixed with its date and trip. A fragment reading
     "Everything felt like it was cooked in microwave" is meaningless alone and
-    retrieves for nothing; "2019-02-13, italy — Everything felt like..." is
+    retrieves for nothing; "2019-02-13, klow — Everything felt like..." is
     self-contained and findable by place and date.
 
 Oversized single paragraphs are split on sentence boundaries as a last resort,
