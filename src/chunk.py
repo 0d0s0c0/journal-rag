@@ -49,8 +49,9 @@ SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 class Chunk:
     chunk_id: str
     entry_id: str
-    text: str                    # includes the context header
-    body: str                    # the text without the header
+    text: str                    # what gets embedded: header + body
+    header_len: int              # body is text[header_len:] — stored rather than
+                                 # duplicated, which was 37% of the file
     entry_date: str
     year: int
     month: int
@@ -59,7 +60,11 @@ class Chunk:
     chunk_index: int
     n_chunks: int
     chars: int
-    photos: list[str] = field(default_factory=list)
+    # Photos belong to the entry. Repeating the list on every chunk of a
+    # multi-chunk entry stored 40,188 paths for 14,305 actual ones; look them
+    # up from entries.jsonl by entry_id instead. The count is kept so chunks
+    # can be filtered without the join.
+    n_photos: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -144,7 +149,9 @@ def chunk_entry(entry: dict, limit: int = MAX_CHARS) -> list[Chunk]:
 
     out: list[Chunk] = []
     for i, body in enumerate(bodies):
-        warnings = list(entry.get("warnings", []))
+        # Only chunk-level warnings here; the entry's own warnings stay in
+        # entries.jsonl rather than being copied onto each of its chunks.
+        warnings: list[str] = []
         if len(bodies) > 1:
             warnings.append("split")
         if len(hdr) + len(body) > limit:
@@ -153,7 +160,7 @@ def chunk_entry(entry: dict, limit: int = MAX_CHARS) -> list[Chunk]:
             chunk_id=f"{entry['id']}/{i}",
             entry_id=entry["id"],
             text=hdr + body,
-            body=body,
+            header_len=len(hdr),
             entry_date=date,
             year=int(date[:4]),
             month=int(date[5:7]),
@@ -162,10 +169,7 @@ def chunk_entry(entry: dict, limit: int = MAX_CHARS) -> list[Chunk]:
             chunk_index=i,
             n_chunks=len(bodies),
             chars=len(hdr) + len(body),
-            # Photos belong to the entry, not a paragraph within it. Attaching
-            # them to every chunk keeps any match able to show its images; the
-            # link's paragraph position is a Phase 7 refinement.
-            photos=photos,
+            n_photos=len(photos),
             warnings=warnings,
         ))
     return out
@@ -203,7 +207,7 @@ def main() -> None:
     print(f"over the limit     : {over}  (single paragraphs that resisted splitting)")
     print(f"under {MIN_CHARS} chars     : {sum(1 for s in sizes if s < MIN_CHARS)}")
     print(f"total chars        : {sum(sizes):,}  (~{sum(sizes) // 4:,} tokens)")
-    print(f"with photos        : {sum(1 for c in chunks if c.photos):,}")
+    print(f"with photos        : {sum(1 for c in chunks if c.n_photos):,}")
 
     if dry:
         print("\n--dry-run: nothing written")
