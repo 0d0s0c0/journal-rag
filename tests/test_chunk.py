@@ -103,11 +103,25 @@ class TestChunkEntry:
         assert (c.year, c.month, c.trip) == (2019, 6, "ruritania")
         assert c.entry_id == "ruritania-2019#0007"
 
-    def test_photos_attached_to_each_chunk(self):
+    def test_photo_count_not_the_paths(self):
+        """Paths live in entries.jsonl; repeating them per chunk stored 40,188
+        for 14,305 actual ones."""
         e = entry("\n\n".join("P. " * 400 for _ in range(3)),
-                  photos=[{"path": "2019/zenda/a.jpg"}])
-        for c in chunk_entry(e):
-            assert c.photos == ["2019/zenda/a.jpg"]
+                  photos=[{"path": "2019/zenda/a.jpg"}, {"path": "2019/zenda/b.jpg"}])
+        chunks = chunk_entry(e)
+        assert len(chunks) > 1
+        assert all(c.n_photos == 2 for c in chunks)
+        assert not hasattr(chunks[0], "photos")
+
+    def test_body_recoverable_from_header_len(self):
+        """`body` was stored alongside `text` and was 37% of the file."""
+        c = chunk_entry(entry("Rain all day."))[0]
+        assert c.text[c.header_len:] == "Rain all day."
+        assert c.text[:c.header_len] == "2019-06-14, ruritania — "
+
+    def test_entry_warnings_not_copied_onto_chunks(self):
+        c = chunk_entry(entry("Short.", warnings=["no_photos", "year_rollover"]))[0]
+        assert c.warnings == []
 
     def test_empty_entry_yields_nothing(self):
         assert chunk_entry(entry("   ")) == []
