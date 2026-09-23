@@ -595,10 +595,10 @@ could not.
 
 The journals compare places to other places from other trips:
 
-> *"reminiscent of **Elba**"* · *"like a miniature version of **Vespugia**"* ·
+> *"reminiscent of **Elbonia**"* · *"like a miniature version of **Vespugia**"* ·
 > *"reminiscent of **Borduria** but cleaner"*
 
-Read naively, an extractor records Elba, Vespugia and Borduria as places visited that
+Read naively, an extractor records Elbonia, Vespugia and Borduria as places visited that
 day — and *"where did I travel in 2019?"* returns three countries that were never
 visited. That is worse than a missing row: a **confidently wrong fact**, indistinguishable
 in the index from a true one.
