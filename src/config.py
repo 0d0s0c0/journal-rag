@@ -101,11 +101,18 @@ def _expand(value: str, root: str) -> Path:
 
 
 def load(path: Path = CONFIG_PATH) -> Config:
+    """Load config.yaml, falling back to the example.
+
+    Falling back rather than failing means a fresh clone runs — and reports a
+    missing data directory with a real path — instead of dying on an
+    AttributeError three imports deep, which is what returning None did.
+    """
     if not path.exists():
-        raise SystemExit(
-            f"missing {path}\n"
-            f"  cp {EXAMPLE_PATH.name} config.yaml   # then edit data_root"
-        )
+        if not EXAMPLE_PATH.exists():
+            raise SystemExit(f"no config at {path} and no {EXAMPLE_PATH.name}")
+        print(f"note: no {path.name}; using {EXAMPLE_PATH.name} defaults."
+              f"  cp {EXAMPLE_PATH.name} {path.name}  to customise.")
+        path = EXAMPLE_PATH
     doc = yaml.safe_load(path.read_text()) or {}
 
     root_raw = str(doc.get("data_root", "~/journal-data"))
@@ -160,4 +167,4 @@ def load(path: Path = CONFIG_PATH) -> Config:
     )
 
 
-CONFIG = load() if CONFIG_PATH.exists() else None
+CONFIG = load()
