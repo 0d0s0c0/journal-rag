@@ -565,7 +565,7 @@ wheels = [
 ]
 
 [[package]]
-name = "journal"
+name = "journal-rag"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
