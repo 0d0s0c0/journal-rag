@@ -31,10 +31,11 @@ import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
+from src.config import CONFIG
 from src.search import search
 
-EVAL_DIR = Path.home() / "playground/journal-data/eval"
-QUESTIONS = EVAL_DIR / "questions.txt"
+EVAL_DIR = CONFIG.paths.eval
+QUESTIONS = CONFIG.paths.questions
 
 # Below this, a result is weak enough that returning nothing would be better.
 WEAK = 0.60

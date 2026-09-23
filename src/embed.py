@@ -33,10 +33,12 @@ from pathlib import Path
 import lancedb
 import pyarrow as pa
 
-MODEL = "qwen3-embedding:0.6b"
-DIM = 1024
-HOST = "http://localhost:11434"
-BATCH = 32                    # throughput flattens above ~16; 32 is comfortable
+from src.config import CONFIG
+
+MODEL = CONFIG.embed.model
+DIM = CONFIG.embed.dimensions
+HOST = CONFIG.ollama_host
+BATCH = CONFIG.embed.batch
 TABLE = "chunks"
 
 
@@ -126,12 +128,11 @@ def main() -> None:
     rebuild = "--rebuild" in args
     verify_only = "--verify" in args
 
-    root = Path.home() / "playground/journal-data"
-    src = root / "text/chunks.jsonl"
+    src = CONFIG.paths.chunks
     if not src.exists():
         sys.exit(f"missing {src} — run src.chunk first")
 
-    db = lancedb.connect(str(root / "index"))
+    db = lancedb.connect(str(CONFIG.paths.index))
 
     if verify_only:
         if TABLE not in table_names(db):
@@ -190,7 +191,7 @@ def main() -> None:
     else:
         table = db.create_table(TABLE, rows, schema=SCHEMA)
 
-    print(f"\nindex at {root / 'index'}")
+    print(f"\nindex at {CONFIG.paths.index}")
     print("verifying:")
     sys.exit(1 if verify(table) else 0)
 

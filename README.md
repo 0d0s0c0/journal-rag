@@ -8,6 +8,11 @@ answered from the actual text, running entirely offline on a local LLM.
 A learning project, built one phase at a time. The journals themselves are private and
 live outside this repository; only code is tracked here.
 
+**Using this with your own journals?** Phase 1 (documents → entries) is specific to one
+archive's conventions; everything after it is not. See
+[`docs/ADAPTING.md`](docs/ADAPTING.md) for the `entries.jsonl` contract and what
+writing your own converter involves.
+
 ---
 
 ## Why RAG, not fine-tuning
@@ -145,6 +150,24 @@ Semantic search over it would be badly degraded with nothing to indicate why.
 
 **So: strip photo references from chunk text before embedding; retain them as linked
 metadata.** This belongs in Phase 1, not as a Phase 3 discovery.
+
+## Setup
+
+```bash
+cp config.example.yaml config.yaml     # then edit data_root
+./scripts/setup-repo.sh                # nbstripout + pre-commit hook
+uv sync
+./scripts/ollama-serve.sh              # in its own terminal
+
+uv run python -m src.convert           # documents  -> entries.jsonl
+uv run python -m src.chunk             # entries    -> chunks.jsonl
+uv run python -m src.embed             # chunks     -> LanceDB index
+uv run python -m src.search "..."      # retrieval
+uv run python -m src.evaluate          # score it
+```
+
+Paths, models, chunk size and retrieval settings all live in `config.yaml`;
+nothing is hardcoded.
 
 ## Stack
 

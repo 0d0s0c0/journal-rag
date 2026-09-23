@@ -26,20 +26,20 @@ from pathlib import Path
 
 import lancedb
 
-MODEL = "qwen3-embedding:0.6b"
-HOST = "http://localhost:11434"
+from src.config import CONFIG
+
+MODEL = CONFIG.embed.model
+HOST = CONFIG.ollama_host
 TABLE = "chunks"
 
-# Qwen3-Embedding is instruction-aware. This belongs on queries ONLY.
-QUERY_INSTRUCTION = (
-    "Given a search query, retrieve relevant passages from a personal travel journal"
-)
+# Instruction-aware embedding model. This belongs on queries ONLY.
+QUERY_INSTRUCTION = CONFIG.embed.query_instruction
 
 YEAR_IN_QUERY = re.compile(r"\b(19[89]\d|20[0-4]\d)\b")
 
 
 def embed_query(text: str) -> list[float]:
-    prompt = f"Instruct: {QUERY_INSTRUCTION}\nQuery: {text}"
+    prompt = CONFIG.embed.query_prompt(text)
     req = urllib.request.Request(
         f"{HOST}/api/embed",
         data=json.dumps({"model": MODEL, "input": prompt}).encode(),
@@ -49,9 +49,9 @@ def embed_query(text: str) -> list[float]:
         return json.loads(r.read())["embeddings"][0]
 
 
-def search(query: str, k: int = 5, year: int | None = None,
+def search(query: str, k: int = CONFIG.retrieval.top_k, year: int | None = None,
            trip: str | None = None) -> list[dict]:
-    db = lancedb.connect(str(Path.home() / "playground/journal-data/index"))
+    db = lancedb.connect(str(CONFIG.paths.index))
     q = db.open_table(TABLE).search(embed_query(query)).limit(k)
     # Metadata filters run before the vector comparison, so "in 2019" narrows
     # the candidates rather than relying on the embedding to encode a year,
@@ -66,7 +66,7 @@ def search(query: str, k: int = 5, year: int | None = None,
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("query")
-    ap.add_argument("-k", type=int, default=5, help="results to return")
+    ap.add_argument("-k", type=int, default=CONFIG.retrieval.top_k, help="results to return")
     ap.add_argument("--year", type=int, help="restrict to a year")
     ap.add_argument("--trip", help="restrict to a trip label")
     ap.add_argument("--chars", type=int, default=320, help="snippet length")

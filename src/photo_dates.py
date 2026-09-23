@@ -76,8 +76,8 @@ def load(root: Path, cache: Path, rescan: bool = False) -> dict[str, list[str]]:
 
 
 def main() -> None:
-    data = Path.home() / "playground/journal-data"
-    index = load(data / "raw", data / "photo_dates.json", "--rescan" in sys.argv)
+    from src.config import CONFIG
+    index = load(CONFIG.paths.raw, CONFIG.paths.photo_dates, "--rescan" in sys.argv)
     total = sum(len(v) for v in index.values())
     print(f"dated media files : {total:,}")
     print(f"distinct dates    : {len(index):,}")
