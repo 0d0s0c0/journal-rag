@@ -125,3 +125,20 @@ class TestChunkEntry:
 
     def test_empty_entry_yields_nothing(self):
         assert chunk_entry(entry("   ")) == []
+
+
+class TestQueryPrefix:
+    """Queries carry the instruction prefix; documents are embedded bare.
+    Getting this backwards degrades the whole index with no error."""
+
+    def test_query_prompt_has_the_prefix(self):
+        from src.search import QUERY_INSTRUCTION
+        prompt = f"Instruct: {QUERY_INSTRUCTION}\nQuery: best meals"
+        assert prompt.startswith("Instruct: ")
+        assert "\nQuery: " in prompt
+
+    def test_document_embedding_adds_nothing(self):
+        import inspect
+        from src import embed
+        src = inspect.getsource(embed.embed_batch)
+        assert "Instruct:" not in src, "documents must be embedded bare"
