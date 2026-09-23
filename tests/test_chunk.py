@@ -142,3 +142,34 @@ class TestQueryPrefix:
         from src import embed
         src = inspect.getsource(embed.embed_batch)
         assert "Instruct:" not in src, "documents must be embedded bare"
+
+
+class TestEvalHarness:
+    def test_parses_question_lines(self, tmp_path):
+        from src.evaluate import load_questions
+        f = tmp_path / "q.txt"
+        f.write_text(
+            "# a comment\n"
+            "\n"
+            "flat tire and a bike shop | 2011-02-12\n"
+            "never happened | NONE\n"
+            "malformed line without a separator\n"
+        )
+        qs = load_questions(f)
+        assert qs == [("flat tire and a bike shop", "2011-02-12"),
+                      ("never happened", "NONE")]
+
+    def test_matches_on_date_or_id(self):
+        from src.evaluate import matches
+        hit = {"entry_date": "2011-02-12", "entry_id": "uk-2011#0035",
+               "chunk_id": "uk-2011#0035/0"}
+        assert matches(hit, "2011-02-12")
+        assert matches(hit, "uk-2011#0035")
+        assert matches(hit, "uk-2011#0035/0")
+        assert not matches(hit, "2011-02-13")
+
+    def test_absent_questions_never_match(self):
+        """NONE questions should never count as found, whatever comes back."""
+        from src.evaluate import matches
+        assert not matches({"entry_date": "2011-02-12", "entry_id": "x",
+                            "chunk_id": "y"}, "NONE")
