@@ -733,3 +733,10 @@ image in the archive.
 
 A one-off batch job: slow to run, instant to query. Same shape as the Phase 5
 extraction pass, and worth running on a sample first to estimate total time.
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). The code is yours to adapt; the journals, of course,
+are not included.

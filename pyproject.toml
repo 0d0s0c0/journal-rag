@@ -1,6 +1,9 @@
 [project]
-name = "journal"
+name = "journal-rag"
 version = "0.1.0"
+description = "Ask natural-language questions about years of personal travel journals, answered from the actual text and running entirely offline on a local LLM."
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.14"
 dependencies = [
     "httpx>=0.28.1",
