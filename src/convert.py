@@ -35,6 +35,7 @@ from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 
+from src.config import CONFIG
 from src.dates import DATE_RE, parse_date_line
 from src.photo_dates import load as load_photo_dates
 
@@ -433,8 +434,8 @@ def apply_corrections(entries: list[Entry], corrections: dict[str, str]) -> set[
 
 def main() -> None:
     dry = "--dry-run" in sys.argv
-    root = Path.home() / "playground/journal-data"
-    raw, out_dir = root / "raw", root / "text"
+    paths = CONFIG.paths
+    raw, out_dir = paths.raw, paths.text
     files = sorted(f for f in raw.glob("*.doc*") if not f.name.startswith("~$"))
     if not files:
         sys.exit(f"no journals found in {raw}")
@@ -457,7 +458,7 @@ def main() -> None:
     # date — validated at 94.8% exact against the entries whose links are known.
     # Only entries with no links at all are touched; where the writer linked
     # photos deliberately, that selection is left as it stands.
-    pdates = load_photo_dates(raw, root / "photo_dates.json")
+    pdates = load_photo_dates(raw, paths.photo_dates)
     attached = 0
     for e in all_entries:
         if e.photos or not e.entry_date:
@@ -473,7 +474,7 @@ def main() -> None:
         print(f"photos by date     : {attached:,} attached to "
               f"{sum(1 for e in all_entries if 'photos_by_date' in e.warnings)} entries")
 
-    corrections = load_corrections(root / "corrections.txt")
+    corrections = load_corrections(paths.corrections)
     if corrections:
         used = apply_corrections(all_entries, corrections)
         missing = set(corrections) - used
@@ -527,12 +528,12 @@ def main() -> None:
         return
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / "entries.jsonl"
+    out = paths.entries
     with out.open("w") as fh:
         for e in all_entries:
             fh.write(json.dumps(asdict(e), ensure_ascii=False) + "\n")
 
-    man = out_dir / "manifest.csv"
+    man = paths.manifest
     with man.open("w") as fh:
         fh.write("source_file,entries,photos,file_warnings\n")
         for n, ne, np, fw in per_file:

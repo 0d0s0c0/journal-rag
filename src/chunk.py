@@ -35,12 +35,14 @@ import sys
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
+from src.config import CONFIG
+
 # Chosen against the measured distribution: median entry is 1,574 characters and
 # 41% exceed 2,000. A 2,000 limit leaves the majority whole while splitting the
 # long tail. Tunable with --max; Phase 3 measures whether it was right.
-MAX_CHARS = 2000
-MIN_CHARS = 120          # below this, fold into a neighbour rather than stand alone
-OVERLAP_SENTENCES = 1    # carried across a mid-paragraph seam
+MAX_CHARS = CONFIG.chunking.max_chars
+MIN_CHARS = CONFIG.chunking.min_chars      # below this, fold into a neighbour
+OVERLAP_SENTENCES = CONFIG.chunking.overlap_sentences
 
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
@@ -182,8 +184,7 @@ def main() -> None:
     if "--max" in args:
         limit = int(args[args.index("--max") + 1])
 
-    root = Path.home() / "playground/journal-data/text"
-    src = root / "entries.jsonl"
+    src = CONFIG.paths.entries
     if not src.exists():
         sys.exit(f"missing {src} — run src.convert first")
 
@@ -213,7 +214,7 @@ def main() -> None:
         print("\n--dry-run: nothing written")
         return
 
-    out = root / "chunks.jsonl"
+    out = CONFIG.paths.chunks
     with out.open("w") as fh:
         for c in chunks:
             fh.write(json.dumps(asdict(c), ensure_ascii=False) + "\n")

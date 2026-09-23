@@ -1,22 +1,24 @@
 # ─────────────────────────────────────────────────────────────
-# Copy to config.yaml and edit. config.yaml is gitignored so the
-# real path to your journals never enters this public repo.
+# Copy to config.yaml and edit. config.yaml is gitignored, so the
+# real path to a private archive never enters this repo.
 #
 #     cp config.example.yaml config.yaml
+#
+# Override the location with the JOURNAL_CONFIG environment variable.
 # ─────────────────────────────────────────────────────────────
 
-# Everything derived from your journals lives under this root.
-# It sits as a SIBLING of the repo, not inside it — git cannot see
-# it, so it cannot leak it. (Verified that ~/playground is not
-# itself a git repo; if it were, this would be inside one.)
+# Everything derived from the journals lives under this root, which MUST be
+# outside the repository. Git cannot see it, so it cannot leak it.
 data_root: ~/playground/journal-data
 
 paths:
-  raw: ${data_root}/raw       # original .doc / .docx, never modified
-  text: ${data_root}/text     # converted plain text
-  index: ${data_root}/index   # vector database
-  facts: ${data_root}/facts.db # experience index (Phase 5)
-  eval: ${data_root}/eval     # evaluation question sets (Phase 6)
+  raw: ${data_root}/raw                    # source documents, never modified
+  text: ${data_root}/text                  # entries.jsonl, chunks.jsonl, manifest
+  index: ${data_root}/index                # LanceDB vector store
+  eval: ${data_root}/eval                  # evaluation questions and saved runs
+  facts: ${data_root}/facts.db             # experience index (Phase 5)
+  corrections: ${data_root}/corrections.txt
+  photo_dates: ${data_root}/photo_dates.json
 
 # Local model server. Nothing here talks to the internet.
 ollama:
@@ -25,42 +27,35 @@ ollama:
   embed_model: qwen3-embedding:0.6b
 
 embedding:
-  dimensions: 1024            # qwen3-embedding:0.6b output size
+  # Must match the model above. Changing either INVALIDATES the index —
+  # vectors from different models are not comparable — so a rebuild is
+  # required, not an update. The model name is part of each row's hash so a
+  # mismatch is detected rather than silently returning nonsense.
+  dimensions: 1024
+  batch: 32                 # throughput flattens above ~16 on Apple Silicon
 
-  # Qwen3-Embedding is INSTRUCTION-AWARE. Queries must carry a task prefix or
-  # retrieval quality collapses silently — measured spread across candidates
-  # went from 0.05 (unusable) to 0.19 just by adding it. See docs/SETUP.md.
-  #
-  # Applies to QUERIES ONLY. Documents are embedded bare. Getting this
-  # backwards degrades the entire index with no error.
+  # Qwen3-Embedding is instruction-aware. This prefix goes on QUERIES ONLY;
+  # documents are embedded bare. Measured during setup: with the prefix, the
+  # spread between relevant and irrelevant passages went from 0.05 (unusable)
+  # to 0.20. Applying it to documents degrades the whole index with no error.
   query_instruction: >-
     Given a search query, retrieve relevant passages from a personal travel journal
-  query_template: "Instruct: {instruction}\nQuery: {query}"
 
-# Phase 2 — chunking. We chunk by journal entry, not by character
-# count; these are the fallback bounds for unusually long entries.
 chunking:
-  max_chars: 2000
-  overlap: 200
-  prepend_context: true       # stamp date + location onto each chunk
-                              # so it is interpretable on its own
+  # A chunk is the unit of retrieval. Entries are split on paragraph
+  # boundaries; only a single paragraph over the limit falls back to sentence
+  # splitting, with overlap so a thought spanning the seam survives.
+  max_chars: 2000           # the finished chunk, header included
+  min_chars: 120            # below this, fold into a neighbour
+  overlap: 1                # sentences carried across a forced seam
 
-# Phase 3/5 — retrieval.
 retrieval:
   top_k: 5
-  hybrid: false               # true from Phase 5 (vectors + BM25)
-  bm25_weight: 0.4
-  use_metadata_filter: true   # year/date filters parsed from question
 
-# Phase 4 — generation.
-generation:
-  # Ollama loads models with a conservative default context (~32K observed),
-  # NOT the model's full capability (gemma4 supports 256K). Exceeding the
-  # loaded window truncates the prompt SILENTLY — no error, just a wrong
-  # answer from partial context. Always set this explicitly.
-  # Bigger isn't free: the KV cache grows with context. Size it against the
-  # actual retrieved-chunk volume measured in Phase 3.
-  num_ctx: 32768
-  temperature: 0.2            # low: recall, not creative writing
-  cite_sources: true
-  refuse_when_unsupported: true # say "not in the journals" over guessing
+  # Top-k always returns k results whether or not k relevant ones exist.
+  # Measured on this archive: a real query peaks at 0.70–0.79, while a question
+  # about something that never happened peaks at ~0.57 — and the tail of a real
+  # query sits around 0.59. So peak height and the drop from the top are both
+  # needed to tell a match from the noise floor.
+  min_score: 0.0            # drop results below this (0 disables)
+  relative_cutoff: 0.0      # drop results more than this below the top (0 disables)
