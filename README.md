@@ -8,6 +8,17 @@ answered from the actual text, running entirely offline on a local LLM.
 A learning project, built one phase at a time. The journals themselves are private and
 live outside this repository; only code is tracked here.
 
+**Status:** Phases 0–3 complete — 54 documents parsed into 1,708 dated entries with
+14,305 photos attached, chunked into 2,919 passages, embedded into a local vector index,
+and searchable from the command line. Phases 4–8 (generation, hybrid retrieval, the
+experience index, evaluation, interface) are planned and described below.
+
+Much of what is written here is a record of being wrong: assumptions about the date
+format, the photo metadata, and what semantic search can do were each corrected by
+measuring the real archive. Those corrections are kept rather than tidied away —
+[`docs/CORPUS.md`](docs/CORPUS.md) has the measurements and
+[`docs/SETUP.md`](docs/SETUP.md) has the failures.
+
 **Using this with your own journals?** Phase 1 (documents → entries) is specific to one
 archive's conventions; everything after it is not. See
 [`docs/ADAPTING.md`](docs/ADAPTING.md) for the `entries.jsonl` contract and what
