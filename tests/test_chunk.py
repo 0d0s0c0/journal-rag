@@ -156,8 +156,8 @@ class TestEvalHarness:
             "malformed line without a separator\n"
         )
         qs = load_questions(f)
-        assert qs == [("stranger repaired the gramophone", ["2011-02-16"]),
-                      ("never happened", ["NONE"])]
+        assert qs == [("stranger repaired the gramophone", ["2011-02-16"], []),
+                      ("never happened", ["NONE"], [])]
 
     def test_parses_alternative_answers(self, tmp_path):
         """Some episodes happened more than once; any of them counts."""
@@ -165,7 +165,22 @@ class TestEvalHarness:
         f = tmp_path / "q.txt"
         f.write_text("lost my sextant | 2015-03-19, 2019-08-21, 2023-04-14\n")
         assert load_questions(f) == [
-            ("lost my sextant", ["2015-03-19", "2019-08-21", "2023-04-14"])]
+            ("lost my sextant", ["2015-03-19", "2019-08-21", "2023-04-14"], [])]
+
+    def test_parses_known_wrong_answers(self, tmp_path):
+        """Entries retrieval keeps returning that are not actually answers."""
+        from src.evaluate import load_questions
+        f = tmp_path / "q.txt"
+        f.write_text("snorkelling | 2023-01-06 | NOT 2023-07-17, 2022-09-23\n")
+        assert load_questions(f) == [
+            ("snorkelling", ["2023-01-06"], ["2023-07-17", "2022-09-23"])]
+
+    def test_question_without_an_answer_is_not_scored(self, tmp_path):
+        """An unfinished question must not count as a miss."""
+        from src.evaluate import load_questions
+        f = tmp_path / "q.txt"
+        f.write_text("still working this out |\n")
+        assert load_questions(f) == []
 
     def test_matches_on_date_or_id(self):
         from src.evaluate import matches
