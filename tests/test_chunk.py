@@ -156,20 +156,34 @@ class TestEvalHarness:
             "malformed line without a separator\n"
         )
         qs = load_questions(f)
-        assert qs == [("flat tire and a bike shop", "2011-02-12"),
-                      ("never happened", "NONE")]
+        assert qs == [("flat tire and a bike shop", ["2011-02-12"]),
+                      ("never happened", ["NONE"])]
+
+    def test_parses_alternative_answers(self, tmp_path):
+        """Some episodes happened more than once; any of them counts."""
+        from src.evaluate import load_questions
+        f = tmp_path / "q.txt"
+        f.write_text("lost my phone | 2015-03-11, 2019-08-02, 2023-04-14\n")
+        assert load_questions(f) == [
+            ("lost my phone", ["2015-03-11", "2019-08-02", "2023-04-14"])]
 
     def test_matches_on_date_or_id(self):
         from src.evaluate import matches
         hit = {"entry_date": "2011-02-12", "entry_id": "uk-2011#0035",
                "chunk_id": "uk-2011#0035/0"}
-        assert matches(hit, "2011-02-12")
-        assert matches(hit, "uk-2011#0035")
-        assert matches(hit, "uk-2011#0035/0")
-        assert not matches(hit, "2011-02-13")
+        assert matches(hit, ["2011-02-12"]) == "2011-02-12"
+        assert matches(hit, ["uk-2011#0035"]) == "uk-2011#0035"
+        assert matches(hit, ["uk-2011#0035/0"]) == "uk-2011#0035/0"
+        assert matches(hit, ["2011-02-13"]) is None
+
+    def test_matches_any_alternative_and_says_which(self):
+        from src.evaluate import matches
+        hit = {"entry_date": "2019-08-02", "entry_id": "x", "chunk_id": "y"}
+        assert matches(hit, ["2015-03-11", "2019-08-02"]) == "2019-08-02"
+        assert matches(hit, ["2015-03-11", "2023-04-14"]) is None
 
     def test_absent_questions_never_match(self):
         """NONE questions should never count as found, whatever comes back."""
         from src.evaluate import matches
-        assert not matches({"entry_date": "2011-02-12", "entry_id": "x",
-                            "chunk_id": "y"}, "NONE")
+        assert matches({"entry_date": "2011-02-12", "entry_id": "x",
+                        "chunk_id": "y"}, ["NONE"]) is None

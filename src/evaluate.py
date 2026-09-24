@@ -44,11 +44,13 @@ WEAK = 0.60
 @dataclass
 class Result:
     question: str
-    expected: str
-    rank: int | None          # 1-based; None = not found in the window
-    score: float | None       # similarity of the correct hit
+    expected: list[str]
+    rank: int | None          # 1-based rank of the FIRST correct hit
+    score: float | None       # its similarity
     top_score: float | None   # similarity of whatever ranked first
     top_date: str | None
+    found: int = 0            # how many of the expected answers the window held
+    matched: str | None = None   # which one ranked first
 
 
 def load_questions(path: Path) -> list[tuple[str, str]]:
@@ -63,15 +65,30 @@ def load_questions(path: Path) -> list[tuple[str, str]]:
             print(f"  questions.txt:{n}: no '|' separator, skipped")
             continue
         q, _, expected = line.partition("|")
-        out.append((q.strip(), expected.strip()))
+        # Comma-separated alternatives: some things happened more than once
+        # ("the time I lost my phone"), and any of them is a correct answer.
+        answers = [a.strip() for a in expected.split(",") if a.strip()]
+        out.append((q.strip(), answers))
     return out
 
 
-def matches(hit: dict, expected: str) -> bool:
-    """A hit is correct if it is the expected entry, by date or by id."""
-    if expected.upper() == "NONE":
-        return False
-    return expected in (hit["entry_date"], hit["entry_id"], hit["chunk_id"])
+def is_absent(expected: list[str]) -> bool:
+    return len(expected) == 1 and expected[0].upper() == "NONE"
+
+
+def matches(hit: dict, expected: list[str]) -> str | None:
+    """Return the expected answer this hit satisfies, or None.
+
+    Several answers may be listed: some episodes happened more than once, and
+    any of them counts. Scoring the first one found measures what actually
+    matters — whether retrieval surfaced such an entry at all.
+    """
+    if is_absent(expected):
+        return None
+    for e in expected:
+        if e in (hit["entry_date"], hit["entry_id"], hit["chunk_id"]):
+            return e
+    return None
 
 
 def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
@@ -79,14 +96,20 @@ def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
     for q, expected in questions:
         hits = search(q, k=k)
         rank = score = None
+        matched = None
+        seen: set[str] = set()
         for i, h in enumerate(hits, 1):
-            if matches(h, expected):
-                rank, score = i, similarity(h)
-                break
+            m = matches(h, expected)
+            if not m:
+                continue
+            seen.add(m)
+            if rank is None:
+                rank, score, matched = i, similarity(h), m
         results.append(Result(
             question=q, expected=expected, rank=rank, score=score,
             top_score=similarity(hits[0]) if hits else None,
             top_date=hits[0]["entry_date"] if hits else None,
+            found=len(seen), matched=matched,
         ))
     return results
 
@@ -98,21 +121,22 @@ def similarity(hit: dict) -> float:
 
 
 def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
-    findable = [r for r in results if r.expected.upper() != "NONE"]
-    absent = [r for r in results if r.expected.upper() == "NONE"]
+    findable = [r for r in results if not is_absent(r.expected)]
+    absent = [r for r in results if is_absent(r.expected)]
 
     for r in results:
         hit = r.rank is not None
         if failures_only and (hit and r.rank <= 5):
             continue
-        if r.expected.upper() == "NONE":
+        if is_absent(r.expected):
             risky = r.top_score is not None and r.top_score >= WEAK
             mark = "RISK" if risky else "ok  "
             print(f"  {mark}  [absent]  top={r.top_score:.3f} ({r.top_date})"
                   f"  {r.question[:60]}")
         elif hit:
+            of = f"  [{r.found}/{len(r.expected)} found]" if len(r.expected) > 1 else ""
             print(f"  {'ok  ' if r.rank <= 5 else 'far '}  rank {r.rank:<3} "
-                  f"score={r.score:.3f}  {r.question[:60]}")
+                  f"score={r.score:.3f}  {r.question[:52]}{of}")
         else:
             print(f"  MISS  not in top {k}   top={r.top_score:.3f} "
                   f"({r.top_date})  {r.question[:60]}")
@@ -203,7 +227,10 @@ def main() -> None:
 TEMPLATE = """\
 # Retrieval evaluation questions.
 #
-#   <question in your own words> | <expected entry date, entry id, or NONE>
+#   <question in your own words> | <expected entry date(s), entry id, or NONE>
+#
+# Several answers separated by commas means ANY of them is correct — for
+# episodes that happened more than once ("the time I lost my phone").
 #
 # Write questions about things that happened ONCE and that you would recognise,
 # phrased the way you would ask rather than the way the journal is written —
@@ -218,6 +245,7 @@ TEMPLATE = """\
 # returns confident matches for those will invent answers in Phase 4.
 
 the place I had a flat tire and a kind man took me to a bike shop | 2011-02-12
+# the time I lost or broke my phone | 2015-03-11, 2019-08-02, 2023-04-14
 """
 
 
