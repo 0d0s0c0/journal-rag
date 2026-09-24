@@ -51,9 +51,11 @@ class Result:
     top_date: str | None
     found: int = 0            # how many of the expected answers the window held
     matched: str | None = None   # which one ranked first
+    wrong_above: int = 0      # known-wrong entries ranked above the first correct one
+    wrong_in_window: int = 0  # known-wrong entries anywhere in the window
 
 
-def load_questions(path: Path) -> list[tuple[str, str]]:
+def load_questions(path: Path) -> list[tuple[str, list[str], list[str]]]:
     out: list[tuple[str, str]] = []
     if not path.exists():
         return out
@@ -64,11 +66,30 @@ def load_questions(path: Path) -> list[tuple[str, str]]:
         if "|" not in line:
             print(f"  questions.txt:{n}: no '|' separator, skipped")
             continue
-        q, _, expected = line.partition("|")
+        parts = [p.strip() for p in line.split("|")]
+        q, expected = parts[0], parts[1] if len(parts) > 1 else ""
         # Comma-separated alternatives: some things happened more than once
         # ("the time I lost my phone"), and any of them is a correct answer.
         answers = [a.strip() for a in expected.split(",") if a.strip()]
-        out.append((q.strip(), answers))
+        # An optional third field lists entries known to be WRONG — the day you
+        # decided not to snorkel, the day you watched other people. Retrieval
+        # cannot tell these apart from real answers, so counting how often they
+        # outrank the truth is the signal that should move once something reads
+        # the text rather than ranking it.
+        wrong: list[str] = []
+        if len(parts) > 2:
+            w = parts[2]
+            if w.upper().startswith("NOT"):
+                w = w[3:].lstrip(": ")
+            wrong = [a.strip() for a in w.split(",") if a.strip()]
+        if not answers:
+            # No expected answer yet — a question still being worked out. Counting
+            # it as a miss would quietly depress recall and make every later
+            # comparison wrong.
+            print(f"  questions.txt:{n}: no expected answer yet, not scored "
+                  f"-> {q.strip()[:50]}")
+            continue
+        out.append((q.strip(), answers, wrong))
     return out
 
 
@@ -93,12 +114,15 @@ def matches(hit: dict, expected: list[str]) -> str | None:
 
 def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
     results: list[Result] = []
-    for q, expected in questions:
+    for q, expected, wrong in questions:
         hits = search(q, k=k)
         rank = score = None
         matched = None
         seen: set[str] = set()
+        wrong_ranks: list[int] = []
         for i, h in enumerate(hits, 1):
+            if matches(h, wrong):
+                wrong_ranks.append(i)
             m = matches(h, expected)
             if not m:
                 continue
@@ -110,6 +134,8 @@ def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
             top_score=similarity(hits[0]) if hits else None,
             top_date=hits[0]["entry_date"] if hits else None,
             found=len(seen), matched=matched,
+            wrong_in_window=len(wrong_ranks),
+            wrong_above=sum(1 for r in wrong_ranks if rank is None or r < rank),
         ))
     return results
 
@@ -135,8 +161,9 @@ def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
                   f"  {r.question[:60]}")
         elif hit:
             of = f"  [{r.found}/{len(r.expected)} found]" if len(r.expected) > 1 else ""
+            bad = f"  {r.wrong_above} known-wrong above" if r.wrong_above else ""
             print(f"  {'ok  ' if r.rank <= 5 else 'far '}  rank {r.rank:<3} "
-                  f"score={r.score:.3f}  {r.question[:52]}{of}")
+                  f"score={r.score:.3f}  {r.question[:52]}{of}{bad}")
         else:
             print(f"  MISS  not in top {k}   top={r.top_score:.3f} "
                   f"({r.top_date})  {r.question[:60]}")
@@ -156,6 +183,9 @@ def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
         "median_rank": statistics.median(ranks) if ranks else None,
         "misses": len(findable) - len(ranks),
     }
+    if any(r.wrong_above or r.wrong_in_window for r in findable):
+        summary["wrong_above_total"] = sum(r.wrong_above for r in findable)
+        summary["wrong_in_window_total"] = sum(r.wrong_in_window for r in findable)
     if absent:
         risky = sum(1 for r in absent
                     if r.top_score is not None and r.top_score >= WEAK)
@@ -168,6 +198,10 @@ def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
     if summary["mean_rank"] is not None:
         print(f"  {'mean rank (when found)':<26}{summary['mean_rank']:.1f}")
     print(f"  {'misses':<26}{summary['misses']}")
+    if "wrong_above_total" in summary:
+        print(f"  {'known-wrong above truth':<26}{summary['wrong_above_total']}"
+              f"   <- should fall once something reads the text")
+        print(f"  {'known-wrong in window':<26}{summary['wrong_in_window_total']}")
     if absent:
         print(f"  {'absent questions':<26}{summary['absent_questions']}")
         print(f"  {'...with a >=%.2f top hit' % WEAK:<26}"
@@ -227,7 +261,7 @@ def main() -> None:
 TEMPLATE = """\
 # Retrieval evaluation questions.
 #
-#   <question in your own words> | <expected entry date(s), entry id, or NONE>
+#   <question> | <expected date(s), id, or NONE> | NOT <known-wrong date(s)>
 #
 # Several answers separated by commas means ANY of them is correct — for
 # episodes that happened more than once ("the time I lost my phone").
