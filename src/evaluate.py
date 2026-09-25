@@ -51,7 +51,7 @@ class Result:
     top_date: str | None
     found: int = 0            # how many of the expected answers the window held
     matched: str | None = None   # which one ranked first
-    wrong_above: int = 0      # known-wrong entries ranked above the first correct one
+    wrong_above: int = 0      # known-wrong entries outranking ANY correct answer
     wrong_in_window: int = 0  # known-wrong entries anywhere in the window
 
 
@@ -118,6 +118,7 @@ def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
         hits = search(q, k=k)
         rank = score = None
         matched = None
+        last_right: int | None = None
         seen: set[str] = set()
         wrong_ranks: list[int] = []
         for i, h in enumerate(hits, 1):
@@ -127,6 +128,7 @@ def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
             if not m:
                 continue
             seen.add(m)
+            last_right = i
             if rank is None:
                 rank, score, matched = i, similarity(h), m
         results.append(Result(
@@ -135,7 +137,11 @@ def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
             top_date=hits[0]["entry_date"] if hits else None,
             found=len(seen), matched=matched,
             wrong_in_window=len(wrong_ranks),
-            wrong_above=sum(1 for r in wrong_ranks if rank is None or r < rank),
+            # Counted against the LAST correct hit, not the first. A wrong
+            # answer sitting between two correct ones still displaced one, and
+            # measuring against the first hides that entirely.
+            wrong_above=sum(1 for r in wrong_ranks
+                            if last_right is None or r < last_right),
         ))
     return results
 
@@ -199,7 +205,7 @@ def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
         print(f"  {'mean rank (when found)':<26}{summary['mean_rank']:.1f}")
     print(f"  {'misses':<26}{summary['misses']}")
     if "wrong_above_total" in summary:
-        print(f"  {'known-wrong above truth':<26}{summary['wrong_above_total']}"
+        print(f"  {'wrong outranking a right':<26}{summary['wrong_above_total']}"
               f"   <- should fall once something reads the text")
         print(f"  {'known-wrong in window':<26}{summary['wrong_in_window_total']}")
     if absent:
