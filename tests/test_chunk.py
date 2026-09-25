@@ -254,7 +254,7 @@ class TestSnippet:
 
     def test_centres_on_the_matching_text(self):
         from src.search import snippet
-        text = ("2019-12-18, philippines — " + "Filler about the morning. " * 20
+        text = ("2019-12-18, zembla — " + "Filler about the morning. " * 20
                 + "Porchetta was one of Zenda's most popular dishes. "
                 + "More filler afterwards. " * 20)
         out = snippet(text, "the famous roast pork dish porchetta in Zenda", 120)
