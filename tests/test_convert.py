@@ -96,3 +96,33 @@ class TestYearRollover:
     def test_cannot_roll_twice(self):
         """One file spans at most one New Year."""
         assert self._roll(12, 1, 2014, 2013) == 2014
+
+
+class TestDashAutocorrect:
+    """Word converts " - " to " – " as you type, so an inline text reference can
+    carry an en dash where the file on disk has a hyphen. The hyperlink keeps
+    the real name; only the prose is mangled. Three such references existed in
+    the archive and all three failed to resolve."""
+
+    def test_en_dash_path_falls_back_to_hyphen(self, tmp_path):
+        from src.convert import MediaIndex
+        d = tmp_path / "2025" / "japan"
+        d.mkdir(parents=True)
+        (d / "atami plum garden - bridge.jpg").write_bytes(b"x")
+        idx = MediaIndex(tmp_path)
+
+        hit, how = idx.resolve("2025/japan/atami plum garden – bridge.jpg", 2025)
+        assert how == "dash_fix"
+        assert hit == "2025/japan/atami plum garden - bridge.jpg"
+
+    def test_em_dash_too(self, tmp_path):
+        from src.convert import MediaIndex
+        d = tmp_path / "2025" / "japan"
+        d.mkdir(parents=True)
+        (d / "a - b.jpg").write_bytes(b"x")
+        assert MediaIndex(tmp_path).resolve("2025/japan/a — b.jpg", 2025)[1] == "dash_fix"
+
+    def test_genuinely_missing_still_reports_missing(self, tmp_path):
+        from src.convert import MediaIndex
+        (tmp_path / "2025").mkdir()
+        assert MediaIndex(tmp_path).resolve("2025/japan/nope – x.jpg", 2025)[1] == "missing"

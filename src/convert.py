@@ -187,6 +187,17 @@ class MediaIndex:
         hits = self.by_name.get(parts[-1].lower(), [])
         if len(hits) == 1:
             return hits[0], "basename"
+
+        # Word autocorrects " - " to " – " as you type, so an inline text
+        # reference can carry an en dash where the file on disk has a hyphen.
+        # The hyperlink keeps the real name; only the prose gets mangled.
+        if "\u2013" in path or "\u2014" in path:
+            plain = path.replace("\u2013", "-").replace("\u2014", "-")
+            if plain != path:
+                resolved, how = self.resolve(plain, year)
+                if how not in ("missing", "ambiguous"):
+                    return resolved, "dash_fix"
+
         return path, "ambiguous" if hits else "missing"
 
 
