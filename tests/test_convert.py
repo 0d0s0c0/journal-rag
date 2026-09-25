@@ -126,3 +126,26 @@ class TestDashAutocorrect:
         from src.convert import MediaIndex
         (tmp_path / "2025").mkdir()
         assert MediaIndex(tmp_path).resolve("2025/Ruritania/nope – x.jpg", 2025)[1] == "missing"
+
+
+class TestPhotoFilenameDates:
+    """Some photos carry their date only in the filename — EXIF is stripped by
+    messaging apps, and some phones never write DateTimeOriginal at all."""
+
+    def test_bare_yyyymmdd(self, tmp_path):
+        from src.photo_dates import file_date
+        f = tmp_path / "20240104_174348.jpg"; f.write_bytes(b"")
+        assert file_date(f) == "2024-01-04"
+
+    def test_epoch_milliseconds(self, tmp_path):
+        """1733425200000 -> 2024-12-05. Written by messaging apps; note this is
+        the SAVE time, not necessarily when the photo was taken."""
+        from src.photo_dates import file_date
+        f = tmp_path / "1733425200000.jpg"; f.write_bytes(b"")
+        assert file_date(f) == "2024-12-05"
+
+    def test_implausible_numbers_rejected(self, tmp_path):
+        from src.photo_dates import file_date
+        for name in ("1234567890123456.jpg", "99999999.jpg", "20239999_1.jpg"):
+            f = tmp_path / name; f.write_bytes(b"")
+            assert file_date(f) is None, name
