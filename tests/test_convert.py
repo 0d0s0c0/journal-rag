@@ -106,26 +106,26 @@ class TestDashAutocorrect:
 
     def test_en_dash_path_falls_back_to_hyphen(self, tmp_path):
         from src.convert import MediaIndex
-        d = tmp_path / "2025" / "japan"
+        d = tmp_path / "2025" / "syldavia"
         d.mkdir(parents=True)
-        (d / "atami plum garden - bridge.jpg").write_bytes(b"x")
+        (d / "linden garden - bridge.jpg").write_bytes(b"x")
         idx = MediaIndex(tmp_path)
 
-        hit, how = idx.resolve("2025/japan/atami plum garden – bridge.jpg", 2025)
+        hit, how = idx.resolve("2025/syldavia/linden garden – bridge.jpg", 2025)
         assert how == "dash_fix"
-        assert hit == "2025/japan/atami plum garden - bridge.jpg"
+        assert hit == "2025/syldavia/linden garden - bridge.jpg"
 
     def test_em_dash_too(self, tmp_path):
         from src.convert import MediaIndex
-        d = tmp_path / "2025" / "japan"
+        d = tmp_path / "2025" / "syldavia"
         d.mkdir(parents=True)
         (d / "a - b.jpg").write_bytes(b"x")
-        assert MediaIndex(tmp_path).resolve("2025/japan/a — b.jpg", 2025)[1] == "dash_fix"
+        assert MediaIndex(tmp_path).resolve("2025/syldavia/a — b.jpg", 2025)[1] == "dash_fix"
 
     def test_genuinely_missing_still_reports_missing(self, tmp_path):
         from src.convert import MediaIndex
         (tmp_path / "2025").mkdir()
-        assert MediaIndex(tmp_path).resolve("2025/japan/nope – x.jpg", 2025)[1] == "missing"
+        assert MediaIndex(tmp_path).resolve("2025/syldavia/nope – x.jpg", 2025)[1] == "missing"
 
 
 class TestPhotoFilenameDates:

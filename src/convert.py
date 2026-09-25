@@ -474,7 +474,7 @@ def main() -> None:
     #
     # Originally this touched only entries with NO links at all, to leave a
     # deliberate selection alone. That was too conservative: a folder nested one
-    # level deeper than the convention (2023/hawaii/big island1) is referenced by
+    # level deeper than the convention (2023/zenda/north shore1) is referenced by
     # nothing, and its photos were stranded even though every one of their days
     # had an entry. Now any photo linked nowhere in its own journal is eligible,
     # which keeps hand-picked selections intact while rescuing the strays.
