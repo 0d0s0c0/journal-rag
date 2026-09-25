@@ -74,6 +74,9 @@ class Retrieval:
     top_k: int = 5
     min_score: float = 0.0
     relative_cutoff: float = 0.0
+    mode: str = "hybrid"          # hybrid | vector | fts
+    vector_weight: float = 1.0
+    fts_weight: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -155,6 +158,9 @@ def load(path: Path = CONFIG_PATH) -> Config:
             top_k=int(r.get("top_k", 5)),
             min_score=float(r.get("min_score", 0.0)),
             relative_cutoff=float(r.get("relative_cutoff", 0.0)),
+            mode=str(r.get("mode", "hybrid")),
+            vector_weight=float(r.get("vector_weight", 1.0)),
+            fts_weight=float(r.get("fts_weight", 1.0)),
         ),
         chunking=Chunking(
             max_chars=int(c.get("max_chars", 2000)),
