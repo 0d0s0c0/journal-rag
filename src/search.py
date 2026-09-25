@@ -1,7 +1,7 @@
 """Search the journal index. Retrieval only — no LLM writes anything here.
 
     uv run python -m src.search "best places I snorkelled"
-    uv run python -m src.search "Emily" --mode fts
+    uv run python -m src.search "Margarethe" --mode fts
     uv run python -m src.search "outstanding meals" --year 2019
     uv run python -m src.search "rain" --no-text          # metadata only
 
@@ -10,10 +10,10 @@ reason for running both:
 
   vector   finds meaning. "the restaurant where I accidentally underpaid"
            reaches the right entry on wording the journal never uses. It is
-           useless on names: "Emily" appears in 3 chunks of 4,749 and vector
+           useless on names: "Margarethe" appears in 3 chunks of 4,749 and vector
            search finds one of them.
 
-  BM25     finds rare words. "Emily" ranks all three first. It cannot match a
+  BM25     finds rare words. "Margarethe" ranks all three first. It cannot match a
            paraphrase at all — no shared terms, no score.
 
 Fused with Reciprocal Rank Fusion, which combines by POSITION rather than
@@ -154,17 +154,29 @@ def snippet(text: str, query: str, width: int) -> str:
         return flat[:width]
 
     # Score each position by how many distinct query words fall nearby.
-    hits = [m.start() for w in words
-            for m in re.finditer(rf"\b{re.escape(w[:6])}", flat, re.I)]
+    hits = sorted(m.start() for w in words
+                  for m in re.finditer(rf"\b{re.escape(w[:6])}", flat, re.I))
     if not hits:
         return flat[:width]
+    # Sorted, so ties resolve to the EARLIEST position in the cluster. Without
+    # that the window can centre on a trailing common word ("dishes") and clip
+    # the rare one the query was really about ("porchetta").
     best, best_n = hits[0], 0
     for h in hits:
         n = sum(1 for x in hits if h - width // 2 <= x <= h + width // 2)
         if n > best_n:
             best, best_n = h, n
     start = max(0, best - width // 3)
+    if start:
+        # Snap to a word boundary — "…rchetta was one of" reads as a typo.
+        space = flat.find(" ", start)
+        if 0 <= space < start + 25:
+            start = space + 1
     out = flat[start:start + width]
+    if start + width < len(flat):
+        cut = out.rfind(" ")
+        if cut > width - 25:
+            out = out[:cut]
     return ("…" if start else "") + out
 
 

@@ -5,7 +5,7 @@
     uv run python -m src.reconstruct --list       # show orphaned folders only
 
 Some media folders have no journal at all. Where those photographs were
-*renamed* — "black canyon - gunnison river", "cody - old trail town saloon" —
+*renamed* — "silver canyon - kestrel river", "brandt - old trail town saloon" —
 a journal once existed: the renaming was done in order to reference them from
 the prose. The writing is gone; the itinerary and the subjects are not.
 

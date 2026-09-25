@@ -83,7 +83,7 @@ retrieval:
   #   hybrid 1.0/0.3     0.50  0.50  0.70  0.80    2
   #   hybrid 1.0/0.15    0.50  0.50  0.70  0.90    1
   #
-  # This was a surprise. BM25 clearly wins on individual queries — "Emily"
+  # This was a surprise. BM25 clearly wins on individual queries — "Margarethe"
   # appears in 3 chunks and vector search finds one of them, while BM25 ranks
   # all three first; "glass dining room" goes from unfindable to rank 3. But
   # Reciprocal Rank Fusion rewards AGREEMENT over CONFIDENCE: a chunk both

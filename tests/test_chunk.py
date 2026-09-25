@@ -255,24 +255,24 @@ class TestSnippet:
     def test_centres_on_the_matching_text(self):
         from src.search import snippet
         text = ("2019-12-18, philippines — " + "Filler about the morning. " * 20
-                + "Lechon was one of Cebu's most popular dishes. "
+                + "Porchetta was one of Zenda's most popular dishes. "
                 + "More filler afterwards. " * 20)
-        out = snippet(text, "the famous roast pork dish lechon in Cebu", 120)
-        assert "Lechon" in out
+        out = snippet(text, "the famous roast pork dish porchetta in Zenda", 120)
+        assert "Porchetta" in out
         assert out.startswith("…")
 
     def test_falls_back_to_the_opening_for_a_pure_semantic_match(self):
         """No shared vocabulary — there is no 'matching part' to centre on."""
         from src.search import snippet
-        text = "2019-06-14, croatia — " + "We took the boat out early. " * 30
+        text = "2019-06-14, borduria — " + "We took the boat out early. " * 30
         out = snippet(text, "maritime excursion", 80)
         assert out.startswith("We took the boat")
 
     def test_short_chunk_returned_whole(self):
         from src.search import snippet
-        assert snippet("2019-06-14, croatia — Rain all day.", "rain", 200) == "Rain all day."
+        assert snippet("2019-06-14, borduria — Rain all day.", "rain", 200) == "Rain all day."
 
     def test_stopwords_do_not_drive_the_window(self):
         from src.search import snippet
-        text = "2019-06-14, croatia — " + ("the and of it was " * 40) + "OYSTERS here."
+        text = "2019-06-14, borduria — " + ("the and of it was " * 40) + "OYSTERS here."
         assert "OYSTERS" in snippet(text, "the time I ate oysters", 100)

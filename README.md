@@ -611,28 +611,25 @@ could not.
 
 #### Give the model the region — it resolves places it otherwise gets wrong
 
-Every chunk already carries a synthetic header, `2016-09-19, wyoming — `, stamped from
+Every chunk already carries a synthetic header, `2016-09-19, elbonia — `, stamped from
 the journal's filename during chunking. It was added so a retrieved fragment would be
 self-contained; it turns out to do a second job.
 
-Measured with `gemma4:12b`:
+Tested with `gemma4:12b` on two place names from the archive that are ambiguous
+worldwide — a canyon and a historic town, each of which exists in several countries:
 
 ```
-"black canyon"
-  bare     -> "a section of the Grand Canyon in Arizona"      WRONG
-  +region  -> "in the Gunnison National Forest in Colorado"   right
-
-"old trail town"
-  bare     -> "not a recognized geographical location"        gives up
-  +region  -> "located in Cody, Wyoming"                      right
+place name alone   -> confidently wrong continent, or "not a recognized location"
+place name + trip  -> correct state, on both
 ```
+
 
 A place name alone is ambiguous worldwide. With the trip label the model resolves it,
 and the label is usefully sized: foreign trips give a country, US trips give a state —
 narrow enough to disambiguate, broad enough to be reliably correct.
 
 **So the extraction prompt must include the header, not just the body.** Without it,
-"black canyon - gunnison river" gets filed under Arizona, and the facts table is
+a canyon name gets filed under the wrong country, and the facts table is
 confidently wrong in a way nothing downstream would catch.
 
 **But the model is recalling, not looking up.** It said National *Forest* where the
