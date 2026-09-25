@@ -609,6 +609,37 @@ old man was nice, explaining the items on the menu"* is a separate `person` row 
 One table with independent rows represents that correctly; a single per-venue rating
 could not.
 
+#### Give the model the region — it resolves places it otherwise gets wrong
+
+Every chunk already carries a synthetic header, `2016-09-19, wyoming — `, stamped from
+the journal's filename during chunking. It was added so a retrieved fragment would be
+self-contained; it turns out to do a second job.
+
+Measured with `gemma4:12b`:
+
+```
+"black canyon"
+  bare     -> "a section of the Grand Canyon in Arizona"      WRONG
+  +region  -> "in the Gunnison National Forest in Colorado"   right
+
+"old trail town"
+  bare     -> "not a recognized geographical location"        gives up
+  +region  -> "located in Cody, Wyoming"                      right
+```
+
+A place name alone is ambiguous worldwide. With the trip label the model resolves it,
+and the label is usefully sized: foreign trips give a country, US trips give a state —
+narrow enough to disambiguate, broad enough to be reliably correct.
+
+**So the extraction prompt must include the header, not just the body.** Without it,
+"black canyon - gunnison river" gets filed under Arizona, and the facts table is
+confidently wrong in a way nothing downstream would catch.
+
+**But the model is recalling, not looking up.** It said National *Forest* where the
+answer is National *Park*. Close enough to disambiguate, not close enough to cite —
+which is exactly why `evidence` records what the journal actually said rather than what
+the model inferred around it.
+
 #### Comparisons are not visits
 
 The journals compare places to other places from other trips:
@@ -664,6 +695,8 @@ expensive part, and it runs once.
 - [ ] Parse year/date ranges from questions; filter *before* semantic ranking
 - [ ] Add BM25 keyword search; fuse rankings with vectors
 - [ ] Offline extraction pass over all 1,703 entries into the `experience` table
+- [ ] Include the chunk header (date + trip label) in the extraction prompt — without
+      the region, place names resolve to the wrong continent
 - [ ] Pin the `type` and `setting` vocabularies in the prompt; reject anything outside them
 - [ ] Calibrate sentiment with few-shot examples drawn from the real journals —
       "pretty tasty" must not score neutral
