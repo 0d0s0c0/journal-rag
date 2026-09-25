@@ -354,6 +354,13 @@ them would mean frame sampling; out of scope.
 - [ ] Convert legacy `.doc` via `textutil`
 - [ ] Quality pass: encodings, stray artifacts, entries the date regex missed
 - [x] Write a manifest; flag anything that converted badly
+- [x] **Rebuild entries for trips whose journal is lost** — `src/reconstruct.py`.
+      Six media folders had no journal at all, but where the photographs were
+      *renamed by hand* a journal once existed: the renaming was done so the prose
+      could reference them. The dates survive in EXIF, the place in the folder, and
+      the subjects in the filenames — captions written at the time. 33 entries
+      covering 920 photographs. Kept in a separate file, flagged `reconstructed`,
+      and every search result says so. These are captions, never prose.
 - [x] **Date corrections without touching the source.** The journals contain a few
       mistyped date headers — a month slip while the day continues the sequence.
       `journal-data/corrections.txt` holds `<entry-id>: YYYY-MM-DD` overrides applied

@@ -153,7 +153,11 @@ def chunk_entry(entry: dict, limit: int = MAX_CHARS) -> list[Chunk]:
     for i, body in enumerate(bodies):
         # Only chunk-level warnings here; the entry's own warnings stay in
         # entries.jsonl rather than being copied onto each of its chunks.
-        warnings: list[str] = []
+        # Provenance must survive into the chunk: a reconstructed entry is
+        # photograph captions, not something that was written, and a search
+        # result has to say so.
+        warnings: list[str] = [w for w in entry.get("warnings", [])
+                               if w in ("reconstructed", "no_captions")]
         if len(bodies) > 1:
             warnings.append("split")
         if len(hdr) + len(body) > limit:
@@ -189,6 +193,17 @@ def main() -> None:
         sys.exit(f"missing {src} — run src.convert first")
 
     entries = [json.loads(l) for l in src.open()]
+
+    # Entries rebuilt from photographs live in their own file so they can never
+    # be confused with written prose. They are chunked alongside, carrying the
+    # `reconstructed` flag through to every chunk.
+    recon = src.parent / "entries-reconstructed.jsonl"
+    n_recon = 0
+    if recon.exists():
+        extra = [json.loads(l) for l in recon.open()]
+        entries += extra
+        n_recon = len(extra)
+
     chunks: list[Chunk] = []
     for e in entries:
         chunks.extend(chunk_entry(e, limit))
@@ -199,7 +214,8 @@ def main() -> None:
     over = sum(1 for s in sizes if s > limit)
 
     print(f"limit              : {limit} chars")
-    print(f"entries            : {len(entries):,}")
+    print(f"entries            : {len(entries):,}"
+          + (f"  ({n_recon} reconstructed from photographs)" if n_recon else ""))
     print(f"chunks             : {n:,}  ({n / len(entries):.2f} per entry)")
     print(f"entries split       : {split_entries:,} "
           f"({100 * split_entries // len(entries)}%)")

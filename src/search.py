@@ -95,9 +95,10 @@ def main() -> None:
         d = h.get("_distance")
         sim = 1 - (d * d) / 2 if d is not None else float("nan")
         photos = f"  {h['n_photos']} photo(s)" if h["n_photos"] else ""
+        recon = "  [RECONSTRUCTED from photo captions]" if h.get("reconstructed") else ""
         part = (f"  [{h['chunk_index'] + 1}/{h['n_chunks']}]"
                 if h["n_chunks"] > 1 else "")
-        print(f"{i}. {sim:.3f}  {h['entry_date']}  {h['trip']}{part}{photos}")
+        print(f"{i}. {sim:.3f}  {h['entry_date']}  {h['trip']}{part}{photos}{recon}")
         print(f"   {h['chunk_id']}")
         if not args.no_text:
             body = h["text"].split(" — ", 1)[-1].replace("\n", " ")
