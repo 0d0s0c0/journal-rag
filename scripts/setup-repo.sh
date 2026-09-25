@@ -19,6 +19,10 @@ echo "Pointing git at scripts/hooks..."
 git config core.hooksPath scripts/hooks
 chmod +x scripts/hooks/*
 
+echo "Building the private place-name list (gitignored)..."
+uv run python -m src.private_names 2>/dev/null || \
+  echo "  skipped — no archive configured yet; run it once data_root is set"
+
 echo
 echo "Verifying:"
 printf "  nbstripout filter : %s\n" \

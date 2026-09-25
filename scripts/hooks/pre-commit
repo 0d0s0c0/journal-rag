@@ -54,7 +54,29 @@ sys.exit(1 if any(c.get('outputs') for c in nb.get('cells', [])) else 0)
   fi
 done <<< "$staged"
 
-# ── 3. Large files, a weak proxy for "this is data, not code" ────────────────
+# ── 3. Place names from the private archive ─────────────────────────────────
+# Writing code and docs ABOUT a private archive means reaching for its real
+# names as the obvious illustration — a comment on why a path failed to resolve,
+# a test fixture, a worked example. It happened three times here before anyone
+# noticed. The name list lives outside the repo and is gitignored; regenerate it
+# with `uv run python -m src.private_names`.
+NAMES_FILE="${JOURNAL_DATA:-$HOME/playground/journal-data}/private-names.txt"
+if [ -f "$NAMES_FILE" ]; then
+  # Staged content only — the working tree may legitimately hold anything.
+  staged_content=$(git diff --cached -U0 | grep "^+" | grep -v "^+++" || true)
+  if [ -n "$staged_content" ]; then
+    while IFS= read -r name; do
+      case "$name" in ''|'#'*) continue ;; esac
+      if printf '%s' "$staged_content" | grep -qiE "\b$(printf '%s' "$name" | sed 's/[][\.*^$/]/\\&/g')\b"; then
+        printf "${RED}BLOCKED${NC}  a place name from the archive appears in staged changes: %s\n" "$name"
+        printf "          use a fictional name instead\n"
+        fail=1
+      fi
+    done < "$NAMES_FILE"
+  fi
+fi
+
+# ── 4. Large files, a weak proxy for "this is data, not code" ────────────────
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   size=$(git cat-file -s "$(git rev-parse ":$f" 2>/dev/null)" 2>/dev/null || echo 0)
