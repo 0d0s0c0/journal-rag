@@ -45,7 +45,17 @@ chunking:
   # A chunk is the unit of retrieval. Entries are split on paragraph
   # boundaries; only a single paragraph over the limit falls back to sentence
   # splitting, with overlap so a thought spanning the seam survives.
-  max_chars: 2000           # the finished chunk, header included
+  # 1100 chosen by measurement, not intuition. Tested against the eval set at
+  # 2000 / 1100 / 600:
+  #   2000 — dilution buries short incidents. "He forgot to give me 10 euro
+  #          change" sits 98% through a 1,947-char entry and was unfindable
+  #          even by near-verbatim query.
+  #    600 — fixes dilution, but breaks paraphrase: the one question answerable
+  #          only by semantic similarity fell out of the top 10 entirely.
+  #   1100 — recall@1 0.33 -> 0.60, misses 2 -> 1, paraphrase held at rank 6.
+  # Costs: multi-answer questions surface fewer alternatives (4/4 -> 2/4), and
+  # absent queries find spurious matches more often. Re-measure if this changes.
+  max_chars: 1100           # the finished chunk, header included
   min_chars: 120            # below this, fold into a neighbour
   overlap: 1                # sentences carried across a forced seam
 
