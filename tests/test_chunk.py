@@ -217,12 +217,22 @@ class TestReciprocalRankFusion:
         out = rrf([(vec, 1.0), (fts, 1.0)], k=2)
         assert out[0]["chunk_id"] == "both"
 
-    def test_lowering_the_weight_restores_confidence(self):
+    def test_damping_makes_early_ranks_nearly_equal(self):
+        """RRF_K=60 puts rank 1 and rank 3 within 3% of each other, so even a
+        small second-opinion bonus flips them. This is why lowering fts_weight
+        never rescued the hybrid: by the time BM25 stops displacing confident
+        vector hits, it has stopped contributing anything either.
+
+            solo at vector rank 1      1/61          = 0.01639
+            both at rank 3 in both   1/63 + w/63
+
+        The crossover is at w < 0.033.
+        """
         from src.search import reciprocal_rank_fusion as rrf
         vec = [{"chunk_id": "solo"}, {"chunk_id": "x"}, {"chunk_id": "both"}]
         fts = [{"chunk_id": "y"}, {"chunk_id": "z"}, {"chunk_id": "both"}]
-        out = rrf([(vec, 1.0), (fts, 0.15)], k=2)
-        assert out[0]["chunk_id"] == "solo"
+        assert rrf([(vec, 1.0), (fts, 0.15)], k=2)[0]["chunk_id"] == "both"
+        assert rrf([(vec, 1.0), (fts, 0.02)], k=2)[0]["chunk_id"] == "solo"
 
     def test_keeps_the_row_carrying_a_vector_distance(self):
         from src.search import reciprocal_rank_fusion as rrf
