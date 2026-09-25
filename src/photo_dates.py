@@ -30,14 +30,32 @@ MEDIA = {".jpg", ".jpeg", ".png", ".mp4", ".mov", ".m4v", ".heic", ".tif", ".tif
 # than EXIF, and it survives the metadata being stripped.
 FNAME_DATE = re.compile(r"(?:PXL|IMG|VID|DSC|MVI)[_-](\d{4})(\d{2})(\d{2})")
 
+# Bare YYYYMMDD, as some phones write it: 20231223_174348.jpg
+FNAME_BARE = re.compile(r"\b(20[0-2]\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b")
+
+# Unix milliseconds, written by messaging apps: 1733320396486.jpg. Such images
+# arrive with EXIF stripped, so the filename is the only surviving date.
+FNAME_EPOCH = re.compile(r"^(1[0-9]{12})$")
+
 
 def file_date(f: Path) -> str | None:
     """Return YYYY-MM-DD for a media file, or None."""
-    m = FNAME_DATE.search(f.name)
+    for rx in (FNAME_DATE, FNAME_BARE):
+        m = rx.search(f.name)
+        if m:
+            y, mo, d = m.groups()
+            if 1990 <= int(y) <= 2100 and 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
+                return f"{y}-{mo}-{d}"
+
+    m = FNAME_EPOCH.match(f.stem)
     if m:
-        y, mo, d = m.groups()
-        if 1990 <= int(y) <= 2100 and 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
-            return f"{y}-{mo}-{d}"
+        from datetime import datetime, timezone
+        try:
+            dt = datetime.fromtimestamp(int(m.group(1)) / 1000, tz=timezone.utc)
+            if 2000 <= dt.year <= 2100:
+                return dt.strftime("%Y-%m-%d")
+        except (ValueError, OSError, OverflowError):
+            pass
     try:
         ex = Image.open(f).getexif()
         sub = ex.get_ifd(ExifTags.IFD.Exif) or {}

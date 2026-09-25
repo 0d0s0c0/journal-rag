@@ -465,21 +465,34 @@ def main() -> None:
         all_entries.extend(entries)
         per_file.append((f.name, len(entries), sum(len(e.photos) for e in entries), fw))
 
-    # Entries with no links still have photos in the folder tree. Attach them by
-    # date — validated at 94.8% exact against the entries whose links are known.
-    # Only entries with no links at all are touched; where the writer linked
-    # photos deliberately, that selection is left as it stands.
-    pdates = load_photo_dates(raw, paths.photo_dates)
+    # Photos in the folder tree that no entry links to. Attach them by date —
+    # validated at 94.8% exact against the entries whose links are known.
+    #
+    # Originally this touched only entries with NO links at all, to leave a
+    # deliberate selection alone. That was too conservative: a folder nested one
+    # level deeper than the convention (2023/hawaii/big island1) is referenced by
+    # nothing, and its photos were stranded even though every one of their days
+    # had an entry. Now any photo linked nowhere in its own journal is eligible,
+    # which keeps hand-picked selections intact while rescuing the strays.
+    pdates = load_photo_dates(raw, paths.photo_dates, rescan="--rescan" in sys.argv)
+    linked_by_source: dict[str, set[str]] = {}
+    for e in all_entries:
+        linked_by_source.setdefault(e.source_file, set()).update(
+            p["path"] for p in e.photos)
+
     attached = 0
     for e in all_entries:
-        if e.photos or not e.entry_date:
+        if not e.entry_date:
             continue
-        same_day = pdates.get(e.entry_date, [])
+        already = linked_by_source.get(e.source_file, set())
+        same_day = [p for p in pdates.get(e.entry_date, []) if p not in already]
         if not same_day:
             continue
-        e.photos = [{"path": p, "source": "date", "resolved": "exact"} for p in same_day]
+        e.photos = e.photos + [{"path": p, "source": "date", "resolved": "exact"}
+                               for p in same_day]
         e.warnings = [w for w in e.warnings if w != "no_photos"]
-        e.warnings.append("photos_by_date")
+        if "photos_by_date" not in e.warnings:
+            e.warnings.append("photos_by_date")
         attached += len(same_day)
     if attached:
         print(f"photos by date     : {attached:,} attached to "
