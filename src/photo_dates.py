@@ -31,7 +31,10 @@ MEDIA = {".jpg", ".jpeg", ".png", ".mp4", ".mov", ".m4v", ".heic", ".tif", ".tif
 FNAME_DATE = re.compile(r"(?:PXL|IMG|VID|DSC|MVI)[_-](\d{4})(\d{2})(\d{2})")
 
 # Bare YYYYMMDD, as some phones write it: 20231223_174348.jpg
-FNAME_BARE = re.compile(r"\b(20[0-2]\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b")
+# A trailing \b would fail on "20231223_174348" because "_" counts as a word
+# character, so there is no boundary between the date and the underscore.
+FNAME_BARE = re.compile(
+    r"(?<!\d)(20[0-2]\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)")
 
 # Unix milliseconds, written by messaging apps: 1733320396486.jpg. Such images
 # arrive with EXIF stripped, so the filename is the only surviving date.
