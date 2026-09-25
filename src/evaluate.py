@@ -257,11 +257,24 @@ def main() -> None:
             delta = new - old
             arrow = "  " if abs(delta) < 1e-9 else ("up" if delta > 0 else "DOWN")
             print(f"  {key:<12} {old:>6.2f} -> {new:>6.2f}  {arrow}")
-        old_ranks = {r["question"]: r["rank"] for r in before["results"]}
+        old = {r["question"]: r["rank"] for r in before["results"]}
+        new_qs = [r for r in results if r.question not in old]
+        gone = [q for q in old if q not in {r.question for r in results}]
+        if new_qs or gone:
+            # Recall is a fraction of the question set, so it is not comparable
+            # across different sets. Saying so beats quietly printing a delta.
+            print(f"  NOTE: question set changed "
+                  f"(+{len(new_qs)} new, -{len(gone)} removed)."
+                  f" Rates above are not directly comparable.")
         for r in results:
-            o, nw = old_ranks.get(r.question), r.rank
-            if o != nw:
-                print(f"    {r.question[:52]:<54} {o} -> {nw}")
+            if r.question not in old:
+                print(f"    {r.question[:52]:<54} NEW -> {r.rank}")
+                continue
+            o = old[r.question]
+            if o != r.rank:
+                arrow = ("worse" if r.rank is None or (o is not None and r.rank > o)
+                         else "better")
+                print(f"    {r.question[:52]:<54} {o} -> {r.rank}  {arrow}")
 
 
 TEMPLATE = """\

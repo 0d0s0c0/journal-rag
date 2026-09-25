@@ -75,8 +75,8 @@ class Entry:
 
 # ── document reading ─────────────────────────────────────────────────────────
 
-def _lines_with_links(path: Path) -> list[tuple[str, list[str]]]:
-    """Flatten a document to (line, [photo link targets]) pairs.
+def _lines_with_links(path: Path) -> list[tuple[str, list[str], bool]]:
+    """Flatten a document to (line, [photo links], starts_new_paragraph) triples.
 
     Paragraphs are split on soft line breaks, because a date typed after
     Shift+Enter lives inside a paragraph as '\\n' and is invisible to a
@@ -101,7 +101,7 @@ def _lines_with_links(path: Path) -> list[tuple[str, list[str]]]:
 
         segments = (par.text or "").split("\n")
         for i, seg in enumerate(segments):
-            out.append((seg, targets if i == 0 else []))
+            out.append((seg, targets if i == 0 else [], i == 0))
     return out
 
 
@@ -218,7 +218,7 @@ def convert_file(path: Path, media: MediaIndex | None = None) -> tuple[list[Entr
     # Locate entry starts. A date line begins an entry; anything after the date
     # on the same line is the first body text.
     starts: list[tuple[int, tuple[int, int, int | None], str]] = []
-    for i, (line, _) in enumerate(lines):
+    for i, (line, _, _) in enumerate(lines):
         text = line.strip()
         if not text:
             continue
@@ -242,7 +242,7 @@ def convert_file(path: Path, media: MediaIndex | None = None) -> tuple[list[Entr
     prev_month: int | None = None
 
     # Text before the first date line would otherwise be silently dropped.
-    if any(ln.strip() for ln, _ in lines[: starts[0][0]]):
+    if any(ln.strip() for ln, _, _ in lines[: starts[0][0]]):
         entries.append(_build(
             idx=0, stem=stem, trip=trip, source=path.name,
             month=None, day=None, year=None, inline="",
@@ -341,10 +341,14 @@ def _flag_date_outliers(entries: list[Entry]) -> None:
 
 def _build(*, idx, stem, trip, source, month, day, year, inline, block, warnings,
            media=None, file_year=None):
-    raw_lines = ([inline] if inline else []) + [ln for ln, _ in block]
-    targets = [t for _, ts in block for t in ts]
+    # Join real paragraph breaks with a blank line and soft breaks with a
+    # single newline, so split_paragraphs downstream can tell them apart.
+    pieces: list[str] = [inline] if inline else []
+    for ln, _, new_par in block:
+        pieces.append(("\n\n" if (new_par and pieces) else "\n") + ln if pieces else ln)
+    targets = [t for _, ts, _ in block for t in ts]
 
-    clean, inline_refs = strip_photo_refs("\n".join(raw_lines))
+    clean, inline_refs = strip_photo_refs("".join(pieces))
     text = normalise(clean)
 
     def _add(raw: str, origin: str):

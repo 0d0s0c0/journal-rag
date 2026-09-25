@@ -45,17 +45,27 @@ chunking:
   # A chunk is the unit of retrieval. Entries are split on paragraph
   # boundaries; only a single paragraph over the limit falls back to sentence
   # splitting, with overlap so a thought spanning the seam survives.
-  # 1100 chosen by measurement, not intuition. Tested against the eval set at
-  # 2000 / 1100 / 600:
-  #   2000 — dilution buries short incidents. "He forgot to give me 10 euro
+  # 1600, chosen by measurement and re-tuned after a bug fix.
+  #
+  # History, because the number is meaningless without it:
+  #   2000 — dilution buried short incidents. "He forgot to give me 10 euro
   #          change" sits 98% through a 1,947-char entry and was unfindable
   #          even by near-verbatim query.
-  #    600 — fixes dilution, but breaks paraphrase: the one question answerable
-  #          only by semantic similarity fell out of the top 10 entirely.
-  #   1100 — recall@1 0.33 -> 0.60, misses 2 -> 1, paraphrase held at rank 6.
-  # Costs: multi-answer questions surface fewer alternatives (4/4 -> 2/4), and
-  # absent queries find spurious matches more often. Re-measure if this changes.
-  max_chars: 1100           # the finished chunk, header included
+  #    600 — fixed dilution, broke paraphrase: the one question answerable only
+  #          by semantic similarity fell out of the top 10 entirely.
+  #   1100 — recall@1 0.33 -> 0.60, misses 2 -> 1. Best of the three.
+  #
+  # Then a real bug surfaced: convert.py joined Word paragraphs with a single
+  # newline, so split_paragraphs (which looks for blank lines) saw 96% of
+  # entries as ONE paragraph. Every chunk boundary was a sentence split, while
+  # the code claimed to use paragraph seams. Fixing it took median paragraph
+  # size from 1,371 to 455 chars — which made 1100 too small, since chunks now
+  # pack several real paragraphs instead of cutting mid-thought.
+  #
+  #   1100 + real paragraphs — 4 regressions, 1 improvement
+  #   1600 + real paragraphs — 9 of 12 questions at rank 1, mean rank 1.1,
+  #                            paraphrase recovered from rank 6 to rank 2
+  max_chars: 1600           # the finished chunk, header included
   min_chars: 120            # below this, fold into a neighbour
   overlap: 1                # sentences carried across a forced seam
 
