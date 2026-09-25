@@ -96,6 +96,10 @@ SCHEMA = pa.schema([
     pa.field("chunk_index", pa.int32()),
     pa.field("n_chunks", pa.int32()),
     pa.field("n_photos", pa.int32()),
+    # Reconstructed entries are photograph captions, not written prose. The flag
+    # travels with the row so a result can say so rather than implying the words
+    # were ever written down.
+    pa.field("reconstructed", pa.bool_()),
 ])
 
 
@@ -172,6 +176,7 @@ def main() -> None:
                 "year": c["year"], "month": c["month"], "trip": c["trip"] or "",
                 "source_file": c["source_file"], "chunk_index": c["chunk_index"],
                 "n_chunks": c["n_chunks"], "n_photos": c["n_photos"],
+                "reconstructed": "reconstructed" in c.get("warnings", []),
             })
         done = i + len(batch)
         elapsed = time.perf_counter() - started
