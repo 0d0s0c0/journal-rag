@@ -44,6 +44,11 @@ TABLE = "chunks"
 QUERY_INSTRUCTION = CONFIG.embed.query_instruction
 YEAR_IN_QUERY = re.compile(r"\b(19[89]\d|20[0-4]\d)\b")
 
+STOP = frozenset("""a an the and or of in on at to for with i we my our it that this
+was were is are be been had have has did do does from by as but so then there here
+when where what which who how why all any some more most other into over under
+about after before during while than too very just only also not no nor""".split())
+
 # RRF constant from the original paper. Not sensitive: it damps the advantage of
 # rank 1 over rank 2 so one confident ranker cannot dominate the other outright.
 RRF_K = 60
@@ -134,6 +139,35 @@ def search(query: str, k: int = CONFIG.retrieval.top_k, year: int | None = None,
     ], k)
 
 
+def snippet(text: str, query: str, width: int) -> str:
+    """A window around the part that matched, not the opening of the chunk.
+
+    A correct hit can look wrong when the matching sentence is 83% of the way
+    into the chunk and the display shows the first 320 characters. Centres on
+    the densest cluster of query words; falls back to the opening when the match
+    was purely semantic and shares no vocabulary.
+    """
+    body = text.split(" — ", 1)[-1]
+    flat = " ".join(body.split())
+    words = [w for w in re.findall(r"[a-z']{3,}", query.lower()) if w not in STOP]
+    if not words or len(flat) <= width:
+        return flat[:width]
+
+    # Score each position by how many distinct query words fall nearby.
+    hits = [m.start() for w in words
+            for m in re.finditer(rf"\b{re.escape(w[:6])}", flat, re.I)]
+    if not hits:
+        return flat[:width]
+    best, best_n = hits[0], 0
+    for h in hits:
+        n = sum(1 for x in hits if h - width // 2 <= x <= h + width // 2)
+        if n > best_n:
+            best, best_n = h, n
+    start = max(0, best - width // 3)
+    out = flat[start:start + width]
+    return ("…" if start else "") + out
+
+
 def similarity(hit: dict) -> float | None:
     """L2 distance -> cosine for unit-norm vectors. None for FTS-only hits."""
     d = hit.get("_distance")
@@ -176,8 +210,7 @@ def main() -> None:
         print(f"{i}. {score}  {h['entry_date']}  {h['trip']}{part}{photos}{recon}")
         print(f"   {h['chunk_id']}")
         if not args.no_text:
-            body = h["text"].split(" — ", 1)[-1].replace("\n", " ")
-            print(f"   {body[:args.chars]}{'…' if len(body) > args.chars else ''}")
+            print(f"   {snippet(h['text'], args.query, args.chars)}…")
         print()
 
 

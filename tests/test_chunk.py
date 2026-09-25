@@ -246,3 +246,33 @@ class TestReciprocalRankFusion:
         from src.search import reciprocal_rank_fusion as rrf
         out = rrf([([{"chunk_id": "a"}], 1.0), ([], 1.0)], k=5)
         assert [h["chunk_id"] for h in out] == ["a"]
+
+
+class TestSnippet:
+    """A correct hit looks wrong when the matching sentence is 83% into the
+    chunk and the display shows the opening. Centre on the match instead."""
+
+    def test_centres_on_the_matching_text(self):
+        from src.search import snippet
+        text = ("2019-12-18, philippines — " + "Filler about the morning. " * 20
+                + "Lechon was one of Cebu's most popular dishes. "
+                + "More filler afterwards. " * 20)
+        out = snippet(text, "the famous roast pork dish lechon in Cebu", 120)
+        assert "Lechon" in out
+        assert out.startswith("…")
+
+    def test_falls_back_to_the_opening_for_a_pure_semantic_match(self):
+        """No shared vocabulary — there is no 'matching part' to centre on."""
+        from src.search import snippet
+        text = "2019-06-14, croatia — " + "We took the boat out early. " * 30
+        out = snippet(text, "maritime excursion", 80)
+        assert out.startswith("We took the boat")
+
+    def test_short_chunk_returned_whole(self):
+        from src.search import snippet
+        assert snippet("2019-06-14, croatia — Rain all day.", "rain", 200) == "Rain all day."
+
+    def test_stopwords_do_not_drive_the_window(self):
+        from src.search import snippet
+        text = "2019-06-14, croatia — " + ("the and of it was " * 40) + "OYSTERS here."
+        assert "OYSTERS" in snippet(text, "the time I ate oysters", 100)
