@@ -62,6 +62,36 @@ chunking:
 retrieval:
   top_k: 5
 
+  # hybrid | vector | fts
+  #
+  # DEFAULT IS vector, decided by measurement against the eval set:
+  #
+  #   mode                r@1   r@3   r@5  r@10  miss
+  #   vector only        0.60  0.70  0.70  0.90    1   <- best
+  #   fts only           0.40  0.60  0.60  0.70    3
+  #   hybrid 1.0/1.0     0.50  0.50  0.50  0.80    2
+  #   hybrid 1.0/0.3     0.50  0.50  0.70  0.80    2
+  #   hybrid 1.0/0.15    0.50  0.50  0.70  0.90    1
+  #
+  # This was a surprise. BM25 clearly wins on individual queries — "Emily"
+  # appears in 3 chunks and vector search finds one of them, while BM25 ranks
+  # all three first; "glass dining room" goes from unfindable to rank 3. But
+  # Reciprocal Rank Fusion rewards AGREEMENT over CONFIDENCE: a chunk both
+  # retrievers rank 3rd beats one the vector side ranks 1st and BM25 never saw.
+  # Where the vector side is already right, a frequently-wrong second opinion
+  # can only dilute it, and lowering the weight merely converges back to
+  # vector-only.
+  #
+  # Caveats: only 10 answerable eval questions, so one is worth 10 points; just
+  # 2 of them are rare-term lookups, which is where BM25 wins. Adding more
+  # name/restaurant/hotel questions could flip this. RRF is also one fusion
+  # method — BM25 as a re-ranker over vector candidates is untested.
+  #
+  # `--mode fts` remains useful by hand for looking up a specific name.
+  mode: vector
+  vector_weight: 1.0
+  fts_weight: 1.0
+
   # Top-k always returns k results whether or not k relevant ones exist.
   # Measured on this archive: a real query peaks at 0.70–0.79, while a question
   # about something that never happened peaks at ~0.57 — and the tail of a real

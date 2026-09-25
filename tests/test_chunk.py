@@ -202,3 +202,37 @@ class TestEvalHarness:
         from src.evaluate import matches
         assert matches({"entry_date": "2011-02-12", "entry_id": "x",
                         "chunk_id": "y"}, ["NONE"]) is None
+
+
+class TestReciprocalRankFusion:
+    """Fusion combines by POSITION, not score — a 0.78 cosine and a 10.8 BM25
+    score are not comparable numbers."""
+
+    def test_agreement_beats_a_single_first_place(self):
+        """The behaviour that made equal-weight hybrid lose: a chunk both
+        retrievers rank 3rd outscores one the vector side ranks 1st alone."""
+        from src.search import reciprocal_rank_fusion as rrf
+        vec = [{"chunk_id": "solo"}, {"chunk_id": "x"}, {"chunk_id": "both"}]
+        fts = [{"chunk_id": "y"}, {"chunk_id": "z"}, {"chunk_id": "both"}]
+        out = rrf([(vec, 1.0), (fts, 1.0)], k=2)
+        assert out[0]["chunk_id"] == "both"
+
+    def test_lowering_the_weight_restores_confidence(self):
+        from src.search import reciprocal_rank_fusion as rrf
+        vec = [{"chunk_id": "solo"}, {"chunk_id": "x"}, {"chunk_id": "both"}]
+        fts = [{"chunk_id": "y"}, {"chunk_id": "z"}, {"chunk_id": "both"}]
+        out = rrf([(vec, 1.0), (fts, 0.15)], k=2)
+        assert out[0]["chunk_id"] == "solo"
+
+    def test_keeps_the_row_carrying_a_vector_distance(self):
+        from src.search import reciprocal_rank_fusion as rrf
+        out = rrf([([{"chunk_id": "a", "_distance": 0.5}], 1.0),
+                   ([{"chunk_id": "a"}], 1.0)], k=1)
+        assert out[0]["_distance"] == 0.5
+
+    def test_empty_run_is_harmless(self):
+        """FTS returns nothing for a typo or an all-stopword query; the vector
+        side must still stand."""
+        from src.search import reciprocal_rank_fusion as rrf
+        out = rrf([([{"chunk_id": "a"}], 1.0), ([], 1.0)], k=5)
+        assert [h["chunk_id"] for h in out] == ["a"]

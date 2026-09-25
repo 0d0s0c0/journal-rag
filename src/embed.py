@@ -196,6 +196,17 @@ def main() -> None:
     else:
         table = db.create_table(TABLE, rows, schema=SCHEMA)
 
+    # Keyword index over the same table. Built in well under a second, and
+    # without it the hybrid retriever silently degrades to vector-only.
+    try:
+        from lancedb.index import FTS
+        table.create_index("text", config=FTS(), replace=True)
+        print("full-text index built")
+    except Exception as e:
+        print(f"WARNING: could not build the full-text index: "
+              f"{type(e).__name__}: {e}")
+        print("         search will fall back to vector-only")
+
     print(f"\nindex at {CONFIG.paths.index}")
     print("verifying:")
     sys.exit(1 if verify(table) else 0)
