@@ -109,3 +109,12 @@ retrieval:
   # needed to tell a match from the noise floor.
   min_score: 0.0            # drop results below this (0 disables)
   relative_cutoff: 0.0      # drop results more than this below the top (0 disables)
+
+generation:
+  # Ollama loads a conservative context window (~32K observed) regardless of what
+  # the model supports, and exceeding it truncates the prompt SILENTLY — no
+  # error, just a confidently wrong answer built from a partial prompt. Always
+  # set this explicitly. Bigger is not free: the KV cache grows with context,
+  # which is what OLLAMA_KV_CACHE_TYPE=q8_0 in scripts/ollama-serve.sh mitigates.
+  num_ctx: 16384
+  temperature: 0.2          # recall, not creative writing

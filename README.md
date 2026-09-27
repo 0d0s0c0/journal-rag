@@ -524,12 +524,34 @@ Photo EXIF corroborates: a photo of noodle soup timestamped Jun 12 confirms the 
 
 ### Phase 4 — First working RAG
 
-- [ ] Assemble the prompt: question + retrieved chunks + instructions
-- [ ] Ground it hard — answer only from provided entries, say "not in the journals"
-      rather than guess
-- [ ] Cite the source entry date for every claim
+```bash
+uv run python -m src.ask "the name of the famous roast pork dish in Zenda"
+# Porchetta (2020-01-03)
+```
+
+#### A score threshold cannot protect against absent questions
+
+Measured on this archive, the top-hit similarity for questions with a real answer
+and for questions about things that never happened **overlap almost completely**:
+
+```
+real answers    0.509 ───────────────────────── 0.900
+never happened       0.578 ──────── 0.760
+```
+
+Six real answers score *below* the highest absent one. Any cutoff that rejects
+"the time I ran a marathon" also rejects six questions that have answers. So the
+refusal has to come from the model reading the excerpts and noticing the answer
+is not there — which it does: **4 of 4 absent questions refused**, including the
+two that would have passed any threshold.
+
+- [x] Assemble the prompt: question + retrieved chunks + instructions
+- [x] Ground it hard — answer only from provided entries, say "I can't find that
+      in the journals" rather than guess
+- [x] Cite the source entry date for every claim; warn when an answer cites none
+- [x] Set `num_ctx` explicitly — Ollama's default truncates the prompt silently
 - [ ] Verify offline operation with the network disconnected
-- [ ] Run the real questions; expect the "where in 2019" class to underperform
+- [ ] Measure refusal and citation rates as part of the eval harness
 
 ### Phase 5 — Hybrid retrieval and the experience index
 

@@ -80,6 +80,12 @@ class Retrieval:
 
 
 @dataclass(frozen=True)
+class Generation:
+    num_ctx: int = 16384
+    temperature: float = 0.2
+
+
+@dataclass(frozen=True)
 class Chunking:
     max_chars: int = 2000
     min_chars: int = 120
@@ -92,6 +98,7 @@ class Config:
     embed: Embed
     retrieval: Retrieval
     chunking: Chunking
+    generation: Generation
     ollama_host: str
     chat_model: str
     raw: dict = field(default_factory=dict, repr=False)
@@ -151,6 +158,7 @@ def load(path: Path = CONFIG_PATH) -> Config:
 
     r = doc.get("retrieval", {})
     c = doc.get("chunking", {})
+    g = doc.get("generation", {})
     return Config(
         paths=paths,
         embed=embed,
@@ -166,6 +174,10 @@ def load(path: Path = CONFIG_PATH) -> Config:
             max_chars=int(c.get("max_chars", 2000)),
             min_chars=int(c.get("min_chars", 120)),
             overlap_sentences=int(c.get("overlap", 1)),
+        ),
+        generation=Generation(
+            num_ctx=int(g.get("num_ctx", 16384)),
+            temperature=float(g.get("temperature", 0.2)),
         ),
         ollama_host=o.get("host", "http://localhost:11434"),
         chat_model=o.get("chat_model", "gemma4:12b"),
