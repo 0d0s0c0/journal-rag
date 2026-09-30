@@ -111,3 +111,33 @@ class TestNames:
         (tmp_path / "mt vespugia").mkdir()
         names = collect_names(tmp_path)
         assert "mt vespugia" in names and "vespugia" in names
+
+
+class TestReconstructedCoverage:
+    """entries.jsonl does not know about entries rebuilt from photo captions.
+
+    Both halves of this were real bugs. Reading only entries.jsonl left 33 real
+    dates unguarded; the fix then read the wrong id field, matched nothing,
+    appended every chunk in the archive and doubled every word frequency —
+    which lifted six identifying words above the rarity threshold and silently
+    stopped blocking them. A coverage check that quietly loses coverage is
+    worse than none.
+    """
+
+    def test_finds_rows_whose_entry_is_missing(self):
+        from src.private_names import rows_missing_from_entries
+        entries = [{"id": "a", "text": "x"}]
+        chunks = [{"entry_id": "a", "text": "x"}, {"entry_id": "b", "text": "y"}]
+        assert rows_missing_from_entries(entries, chunks) == [chunks[1]]
+
+    def test_matches_across_the_differing_field_names(self):
+        # entries.jsonl says `id`; chunks.jsonl says `entry_id`.
+        from src.private_names import rows_missing_from_entries
+        entries = [{"id": "a"}, {"id": "b"}]
+        chunks = [{"entry_id": "a"}, {"entry_id": "b"}]
+        assert rows_missing_from_entries(entries, chunks) == []
+
+    def test_dates_union_every_source(self):
+        entries = [entry("x", "2019-08-19")]
+        chunks = [{"entry_id": "r", "entry_date": "2043-01-25"}]
+        assert collect_dates(entries, chunks) == {"2019-08-19", "2043-01-25"}

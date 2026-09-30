@@ -100,8 +100,16 @@ def load_entries(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def collect_dates(entries: list[dict]) -> set[str]:
-    return {e["entry_date"] for e in entries if e.get("entry_date")}
+def collect_dates(*sources: list[dict]) -> set[str]:
+    """Every entry date, from every source that knows about one.
+
+    Reading entries.jsonl alone was wrong and silently so: entries reconstructed
+    from photo captions — journals that were lost — never appear there, only
+    downstream in chunks.jsonl. That left 33 real dates unguarded, and the hook
+    would have passed them.
+    """
+    return {row["entry_date"] for src in sources for row in src
+            if row.get("entry_date")}
 
 
 def read_questions(path: Path) -> list[tuple[str, bool]]:
@@ -129,7 +137,7 @@ def collect_phrases(questions: list[tuple[str, bool]],
     non-events, so they are not archive content and blocking them would reject
     the project's own documentation about refusal testing.
     """
-    texts = [e.get("text", "").lower() for e in entries]
+    texts = [e.get("text", "").lower() for e in entries if e.get("text")]
 
     def entries_containing(word: str) -> int:
         return sum(1 for t in texts if word in t)
@@ -163,6 +171,24 @@ def collect_phrases(questions: list[tuple[str, bool]],
     return phrases, words
 
 
+def rows_missing_from_entries(entries: list[dict],
+                              chunks: list[dict]) -> list[dict]:
+    """Chunk rows whose entry is absent from entries.jsonl.
+
+    In practice: entries reconstructed from photo captions, for journals that
+    were lost. They exist only downstream, so anything derived from
+    entries.jsonl alone silently under-covers them.
+
+    The two files disagree on the field name — `id` here, `entry_id` there.
+    Reading the wrong one matches nothing, appends every chunk in the archive,
+    and roughly doubles every word frequency. That is not a visible failure: it
+    quietly lifts identifying words above the rarity threshold so they stop
+    being blocked.
+    """
+    known = {e.get("id") for e in entries if e.get("id")}
+    return [c for c in chunks if c.get("entry_id") not in known]
+
+
 HEADER = ("# Derived from the archive. Gitignored — never commit this file.\n"
           "# The pre-commit hook blocks these in staged changes.\n"
           "# Regenerate after adding journals: uv run python -m src.private_names\n")
@@ -171,11 +197,16 @@ HEADER = ("# Derived from the archive. Gitignored — never commit this file.\n"
 def main() -> None:
     root = CONFIG.paths.data_root
     entries = load_entries(CONFIG.paths.entries)
+    # chunks.jsonl is the only file that also covers reconstructed entries.
+    chunks = load_entries(CONFIG.paths.text / "chunks.jsonl")
     questions = read_questions(CONFIG.paths.questions)
 
     names = collect_names(CONFIG.paths.raw)
-    dates = collect_dates(entries)
-    phrases, words = collect_phrases(questions, entries)
+    dates = collect_dates(entries, chunks)
+    # Reconstructed text counts toward word frequency too, so a word that is
+    # rare in the journals but common in the captions is not mislabelled.
+    extra = rows_missing_from_entries(entries, chunks)
+    phrases, words = collect_phrases(questions, entries + extra)
 
     (root / "private-names.txt").write_text(HEADER + "\n".join(sorted(names)) + "\n")
     (root / "private-dates.txt").write_text(HEADER + "\n".join(sorted(dates)) + "\n")

@@ -105,7 +105,7 @@ def load(path):
 bad = []
 
 # Dates. The trailing guard keeps this off ISO timestamps: a lockfile's
-# `upload-time = "2024-12-04T17:35:28Z"` is PyPI metadata, not a journal entry,
+# `upload-time = "2043-01-25T17:35:28Z"` is PyPI metadata, not a journal entry,
 # and an unguarded rule rewrote one during history cleanup.
 dates = set(load(dates_path))
 if dates:
