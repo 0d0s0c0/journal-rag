@@ -56,7 +56,7 @@ class Result:
     wrong_in_window: int = 0  # known-wrong entries anywhere in the window
 
 
-def load_questions(path: Path) -> list[tuple[str, list[str], list[str]]]:
+def load_questions(path: Path) -> list[tuple[str, list[str], list[str], list[str]]]:
     out: list[tuple[str, str]] = []
     if not path.exists():
         return out
@@ -77,12 +77,18 @@ def load_questions(path: Path) -> list[tuple[str, list[str], list[str]]]:
         # cannot tell these apart from real answers, so counting how often they
         # outrank the truth is the signal that should move once something reads
         # the text rather than ranking it.
+        # A field may be either the known-wrong list (NOT ...) or the required
+        # content list (SAYS ...). Order between them does not matter.
         wrong: list[str] = []
-        if len(parts) > 2:
-            w = parts[2]
-            if w.upper().startswith("NOT"):
-                w = w[3:].lstrip(": ")
-            wrong = [a.strip() for a in w.split(",") if a.strip()]
+        says: list[str] = []
+        for field in parts[2:]:
+            f = field.strip()
+            if f.upper().startswith("SAYS"):
+                says = [a.strip() for a in f[4:].lstrip(": ").split(",") if a.strip()]
+            else:
+                if f.upper().startswith("NOT"):
+                    f = f[3:].lstrip(": ")
+                wrong = [a.strip() for a in f.split(",") if a.strip()]
         if not answers:
             # No expected answer yet — a question still being worked out. Counting
             # it as a miss would quietly depress recall and make every later
@@ -90,7 +96,7 @@ def load_questions(path: Path) -> list[tuple[str, list[str], list[str]]]:
             print(f"  questions.txt:{n}: no expected answer yet, not scored "
                   f"-> {q.strip()[:50]}")
             continue
-        out.append((q.strip(), answers, wrong))
+        out.append((q.strip(), answers, wrong, says))
     return out
 
 
@@ -116,7 +122,7 @@ def matches(hit: dict, expected: list[str]) -> str | None:
 def evaluate(questions: list[tuple[str, str]], k: int, mode: str | None = None,
              rare_slots: int | None = None) -> list[Result]:
     results: list[Result] = []
-    for q, expected, wrong in questions:
+    for q, expected, wrong, _says in questions:
         hits = search(q, k=k, mode=mode, rare_slots=rare_slots)
         rank = score = None
         matched = None
@@ -170,7 +176,7 @@ def check_generation(questions: list[tuple[str, list[str], list[str]]],
     from src.ask import ask                      # imported here — costs a model load
 
     rows: list[dict] = []
-    for q, expected, wrong in questions:
+    for q, expected, wrong, says in questions:
         r = ask(q, k=k, mode=mode, rare_slots=rare_slots)
         cited = set(re.findall(r"\d{4}-\d{2}-\d{2}", r["answer"]))
         # An expected value may be a date, an entry id or a chunk id; all of them
@@ -185,6 +191,15 @@ def check_generation(questions: list[tuple[str, list[str], list[str]]],
             "cited_right": sorted(d for d in cited if hits_any(d, expected)),
             "cited_wrong": sorted(d for d in cited if hits_any(d, wrong)),
             "uncited": not cited and not r["refused"],
+            # Citations prove provenance, not correctness. Measured on this
+            # archive: an answer that cited both expected entries while saying
+            # "the journals do not specify the name of the accommodation" scored
+            # as a pass, as did one that named two places and silently omitted a
+            # third. Every failure found by hand was invisible here. `SAYS`
+            # asserts what the answer must actually contain.
+            "says": list(says),
+            "says_missing": [t for t in says
+                             if t.lower() not in r["answer"].lower()],
             "seconds": round(r["retrieval_s"] + r["generate_s"], 1),
         })
     return rows
@@ -210,6 +225,10 @@ def report_generation(rows: list[dict]) -> dict:
                 if r["cited_wrong"]:
                     detail += " — KNOWN-WRONG"
                 detail += ")"
+        elif r["says_missing"]:
+            mark = "WRONG"
+            detail = (f"cited {', '.join(r['cited_right']) or 'nothing'} but never "
+                      f"said: {', '.join(r['says_missing'])}")
         elif r["cited_right"]:
             mark = "ok  "
             detail = f"cited {', '.join(r['cited_right'])}"
@@ -240,6 +259,8 @@ def report_generation(rows: list[dict]) -> dict:
         "refused_real": sum(r["refused"] for r in real),
         "uncited_real": sum(r["uncited"] for r in real),
         "median_seconds": round(statistics.median(r["seconds"] for r in rows), 1),
+        "content_checked": sum(1 for r in real if r["says"]),
+        "content_complete": sum(1 for r in real if r["says"] and not r["says_missing"]),
     }
     n_abs, n_real = max(len(absent), 1), max(len(real), 1)
     print()
@@ -250,6 +271,10 @@ def report_generation(rows: list[dict]) -> dict:
     print(f"  cited a known-wrong date {stats['cited_known_wrong']}/{len(real)}")
     print(f"  refused a real question  {stats['refused_real']}/{len(real)}")
     print(f"  answered with no date    {stats['uncited_real']}/{len(real)}")
+    if stats["content_checked"]:
+        print(f"  SAID what it must        {stats['content_complete']}"
+              f"/{stats['content_checked']}"
+              f"   <- content, not just citation")
     print(f"  median time              {stats['median_seconds']}s")
     return stats
 
