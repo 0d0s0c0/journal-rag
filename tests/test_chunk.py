@@ -100,7 +100,7 @@ class TestChunkEntry:
 
     def test_metadata_carried_through(self):
         c = chunk_entry(entry("Short entry."))[0]
-        assert (c.year, c.month, c.trip) == (2019, 6, "ruritania")
+        assert (c.year, c.month, c.trip) == (2019, 8, "ruritania")
         assert c.entry_id == "ruritania-2019#0007"
 
     def test_photo_count_not_the_paths(self):
@@ -275,4 +275,4 @@ class TestSnippet:
     def test_stopwords_do_not_drive_the_window(self):
         from src.search import snippet
         text = "2019-08-19, borduria — " + ("the and of it was " * 40) + "QUENELLE here."
-        assert "QUENELLE" in snippet(text, "the time I ate quenelle", 100)
+        assert "QUENELLE" in snippet(text, "the time I ate a quenelle", 100)

@@ -62,7 +62,10 @@ def content_hash(text: str, model: str) -> str:
 
 def embed_batch(texts: list[str], model: str = MODEL, retries: int = 3) -> list[list[float]]:
     """Embed a batch. Documents go in bare — no instruction prefix."""
-    payload = json.dumps({"model": model, "input": texts}).encode()
+    # Context capped explicitly — see Embed.num_ctx for why the default is a
+    # memory trap and why this value is safe for these chunks.
+    payload = json.dumps({"model": model, "input": texts,
+                          "options": {"num_ctx": CONFIG.embed.num_ctx}}).encode()
     for attempt in range(retries):
         try:
             req = urllib.request.Request(

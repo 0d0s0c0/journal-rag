@@ -34,6 +34,21 @@ embedding:
   dimensions: 1024
   batch: 32                 # throughput flattens above ~16 on Apple Silicon
 
+  # MUST exceed the longest chunk. Text past this window is dropped SILENTLY and
+  # its tail simply stops being findable — no error, no warning. The longest
+  # chunk in this archive measures 417 tokens, so 1024 has 2.5x headroom; raise
+  # it alongside chunking.max_chars.
+  #
+  # It is capped at all because Ollama otherwise loads this model with a 32K
+  # window and spends 4.0 GB of KV cache on 639 MB of weights. With a 12B chat
+  # model also resident that was 12.1 GB on a 32 GB machine, which swapped, and
+  # one question took 176s instead of 41s.
+  #
+  # Changing this changes the vectors, so it invalidates the index exactly as a
+  # model change does — unless nothing was being truncated before, which is
+  # checkable: re-embed the longest chunks and compare to the stored vectors.
+  num_ctx: 1024
+
   # Qwen3-Embedding is instruction-aware. This prefix goes on QUERIES ONLY;
   # documents are embedded bare. Measured during setup: with the prefix, the
   # spread between relevant and irrelevant passages went from 0.05 (unusable)
@@ -99,6 +114,32 @@ retrieval:
   #
   # `--mode fts` remains useful by hand for looking up a specific name.
   mode: vector
+
+  # Slots reserved for chunks containing a RARE literal term from the query,
+  # appended to the ranked results. A floor, not a quota — unused when the query
+  # has no rare term.
+  #
+  # Dense retrieval has one catastrophic failure mode and this is the patch for
+  # it: asked "the time i won a tombola", vector search did not return the entry
+  # containing the word `tombola` in its TOP 100 — one of three entries in the
+  # whole archive that contain it. A rare word inside a 1,600-character chunk
+  # barely moves the embedding. Adding three words of context fixed it, which is
+  # not something a person should need to know to search their own diary.
+  #
+  # Switching retriever does not fix it. On that query BM25 ranks it 4th and
+  # hybrid 9th — so hybrid at k=5 still misses — while BM25 alone costs
+  # recall@1 0.77 -> 0.46 across the eval set.
+  #
+  # Candidates for these slots are ranked by SIMILARITY to the query, not by how
+  # often they contain the word. That matters more than it sounds: asked about a
+  # tiffin, all nine entries containing that word mentioned it exactly once, so
+  # any frequency tiebreak degenerates to file order. The right entry scored
+  # 0.487 — 9th of 4,042 corpus-wide, which is why dense retrieval missed it —
+  # but 1st among the nine that contain the word.
+  #
+  # Cost on the eval set: recall@1, recall@5 and misses all unchanged;
+  # completeness@5 0.54 -> 0.58.
+  rare_slots: 2
   vector_weight: 1.0
   fts_weight: 1.0
 
@@ -114,7 +155,27 @@ generation:
   # Ollama loads a conservative context window (~32K observed) regardless of what
   # the model supports, and exceeding it truncates the prompt SILENTLY — no
   # error, just a confidently wrong answer built from a partial prompt. Always
-  # set this explicitly. Bigger is not free: the KV cache grows with context,
-  # which is what OLLAMA_KV_CACHE_TYPE=q8_0 in scripts/ollama-serve.sh mitigates.
-  num_ctx: 16384
+  # set this explicitly.
+  #
+  # Bigger is not free: the KV cache grows with the window (which is what
+  # OLLAMA_KV_CACHE_TYPE=q8_0 in scripts/ollama-serve.sh mitigates). 8192 fits
+  # comfortably — a 5-excerpt prompt measures ~1,600 tokens and even k=10 stays
+  # under 4,000 — while a 16K window alongside a resident embedding model pushed
+  # a 32 GB machine into swap.
+  num_ctx: 8192
   temperature: 0.2          # recall, not creative writing
+
+  # Thinking OFF. Not a style preference — a correctness fix.
+  #
+  # Measured on one question with k=6 (1,593-token prompt):
+  #   think default : 6,599 tokens, 429s, and an EMPTY response. Ollama's
+  #                   /api/generate returned neither `response` nor `thinking`,
+  #                   so the entire 7 minutes of work was unrecoverable.
+  #   think: false  : 83 tokens, 14.4s, a correct and correctly cited answer.
+  #
+  # Every generation timeout in this project traced back to this, including the
+  # earlier mystery of num_predict: 60 returning empty strings — the budget went
+  # to reasoning tokens that were then discarded. Answering from supplied
+  # excerpts is extraction, not deduction; there is nothing for a chain of
+  # thought to add here.
+  think: false

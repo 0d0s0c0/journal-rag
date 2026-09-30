@@ -8,10 +8,16 @@ answered from the actual text, running entirely offline on a local LLM.
 A learning project, built one phase at a time. The journals themselves are private and
 live outside this repository; only code is tracked here.
 
-**Status:** Phases 0–3 complete — 54 documents parsed into 1,708 dated entries with
-14,305 photos attached, chunked into 2,919 passages, embedded into a local vector index,
-and searchable from the command line. Phases 4–8 (generation, hybrid retrieval, the
-experience index, evaluation, interface) are planned and described below.
+**Status:** Phases 0–4 complete — 54 documents parsed into 1,708 dated entries with
+14,305 photos attached, chunked into 4,042 passages, embedded into a local vector index,
+and now **answering questions in natural language**, grounded in the retrieved text with
+dated citations, in a median of 9 seconds. It refuses all four test questions about
+things that never happened, cites an expected entry for 75% of the real ones (exactly
+matching retrieval's recall@1, so nothing is lost in generation), and never cites a
+known-wrong entry. Verified to open no network connection but loopback.
+
+Phases 5–8 (the experience index, wider evaluation, interface, vision captioning) are
+planned and described below.
 
 Much of what is written here is a record of being wrong: assumptions about the date
 format, the photo metadata, and what semantic search can do were each corrected by
@@ -196,8 +202,27 @@ Target machine for these notes: Apple M1 Max, 32 GB RAM.
 ## Privacy design
 
 Everything runs offline: models served locally by Ollama, vector DB on disk, no API
-calls, no telemetry. To be verified rather than assumed — by disabling library analytics
-explicitly and by pulling the network mid-query in Phase 4.
+calls, no telemetry. Verified rather than assumed:
+
+```bash
+./scripts/verify-offline.sh              # answer a question, watch every socket
+./scripts/verify-offline.sh --self-test  # prove the check is capable of failing
+```
+
+The claim being tested is not "a local model was chosen" but "journal text never
+leaves the machine" — different claims, and only the second matters. The script
+audits every URL in `src/` and samples the process tree's TCP peers while a real
+question is answered; anything that is not loopback fails it. Current result: one
+connection, to `127.0.0.1:11434`.
+
+Pulling the network cable — the original plan — tests something weaker. It shows
+the pipeline *survives* without a network, not that it stays silent when one is
+available. And the socket check needed its own negative control: the first version
+watched the wrong pid (`uv run` execs python as a child, and the child holds the
+socket), reported zero connections, and that looked exactly like a pass.
+`--self-test` binds a listener to this machine's own LAN address and connects to
+it — a genuinely non-loopback peer with no packet leaving the host — and the
+detector has to flag it.
 
 **No journal content is committed to this repo, ever.** It is private while under
 construction and intended to go public — so the rule holds from the first commit, not
@@ -491,7 +516,8 @@ The extraction prompt must ask for the event date explicitly.
 Photo EXIF corroborates: a photo of noodle soup timestamped Jun 12 confirms the resolution.
 
 - [x] Chunk by journal **entry**, not character count — `src/chunk.py`.
-      1,708 entries -> **2,919 chunks** (1.71 per entry); 59% stay whole.
+      1,741 entries (1,708 converted + 33 reconstructed) -> **4,042 chunks**
+      (2.32 per entry) at `max_chars: 1600`; 51% stay whole.
       Long entries split on paragraph boundaries, which in these journals fall
       between distinct experiences; sentence splitting with one-sentence overlap
       is the last resort for a single oversized paragraph.
@@ -522,6 +548,207 @@ Photo EXIF corroborates: a photo of noodle soup timestamped Jun 12 confirms the 
 - [ ] **Evaluate retrieval on its own, before adding a model** — if the right entry
       isn't in the top 5, no LLM can rescue the answer
 
+#### "Which entries mention X" is not a ranked question
+
+Searching a single surname returned one entry. It occurs in **four**, in four
+unrelated trips across four years. Measured:
+
+| | entries found (of 4) |
+|---|---|
+| vector, k=5 | 1 |
+| vector, k=25 | **still 1** |
+| BM25 | 4, at ranks 1–4 |
+| hybrid, k=10 | 4 |
+
+Raising `k` does nothing, so this is not a depth problem. A bare proper noun gives
+the embedding almost no signal, and each of those four chunks is dominated by
+whatever else its entry is about — the top vector hit scored 0.470 with ranks 2–5
+between 0.356 and 0.394, none of them containing the term at all.
+
+The instinct is to switch to hybrid. Measurement says it is not that simple — no
+RRF weighting wins both, the tradeoff is strictly monotone:
+
+| weights (vec:fts) | recall@1 | recall@10 | the 4-entry name query |
+|---|---|---|---|
+| 1:0 vector only | **0.77** | 0.85 | 1 of 4 |
+| 3:1 | 0.62 | 0.85 | 2 of 4 |
+| 1:1 hybrid | 0.54 | **0.92** | 3 of 4 |
+| 1:2 | 0.54 | 0.85 | 4 of 4 |
+| 0:1 fts only | 0.46 | 0.69 | 4 of 4 |
+
+I had earlier concluded BM25 "didn't pay" on this archive. That was measured on an
+eval set with barely any lexical queries in it, so the conclusion was scoped to
+that set and stated as if it were general. It is not.
+
+The deeper point is that *neither* retriever can answer the question as asked.
+Top-k returns k rows whether a term occurs twice or forty times, so a complete
+answer is outside its contract. That needs a different operation:
+
+```bash
+uv run python -m src.search "Margarethe" --all   # every entry, unranked, no k
+# 4 entries, 4 chunk(s), 5 occurrence(s) — complete, not top-5
+```
+
+Two details that mattered: the SQL `LIKE` pre-filter is a *substring* test and
+matched an unrelated word sharing those letters, so a whole-word pass runs behind
+it (`--substring` keeps the looser behaviour for stem searches); and LanceDB's
+`limit` has a non-`None` default, so an exhaustive scan has to say so explicitly
+or it silently returns the first handful — the exact bug class this feature exists
+to fix.
+
+Vector stays the default, and a short query now gets a one-line warning when the
+term occurs literally in entries the ranking will not return.
+
+#### A year in the question is a filter, not a hint
+
+*"Where did I snorkel in 2019"* returned three places. Sixteen entries that year
+mention it. Two separate causes, and the first was an outright bug: the search CLI
+detected a year in the query and filtered on it, but `ask` never did — so **2 of
+the 5 excerpts were not even from 2019**, and the model answered from the others.
+The embedding does not encode dates, and putting "2022" in the prompt does nothing.
+
+Filtering runs before ranking, so it is exact and free. It doubles coverage at
+every depth:
+
+| | k=5 | k=10 | k=25 | k=50 |
+|---|---|---|---|---|
+| no filter | 12% | 25% | 44% | 75% |
+| `year=2019` | 25% | 50% | 88% | **100%** |
+
+#### More context is not more coverage
+
+With retrieval fixed, the obvious move is to raise `k`. It works, and then it
+stops working. Three runs at each setting, counting entries the answer actually
+cited out of 16:
+
+| k | entries cited | time |
+|---|---|---|
+| 5 | 4 | 18s |
+| 10 | 8 | 27s |
+| **25** | **13** | 45s |
+| 50 (`num_ctx` 16384) | 12 | 76s |
+
+k=50 retrieves **all 16** and cites fewer than k=25, reproducibly. Past a point,
+extra excerpts dilute the summary rather than extend it — so completeness is not a
+retrieval-depth problem and cannot be bought with a bigger context window. That is
+the argument for the Phase 5 experience index: extract once, then query structure.
+
+Two things did come out of it. The year filter now applies in `ask` (`--year 0`
+disables it), and an answer that is a sample now says so:
+
+```
+cited: 2019-04-11, 2019-04-13, 2019-09-02, 2019-09-06
+COVERAGE: 16 entries mention 'snorkel' in 2019; this answer cites 4.
+          It is a top-5 sample, not a complete list.
+```
+
+An incomplete answer and a complete one are indistinguishable in prose. That line
+costs ~20 ms of index scanning and removes the ambiguity.
+
+Worth noting what the model got *right* here: at k=25 it flagged two places it had
+read about but not snorkelled at — "you decided not to snorkel here" and one where
+the entry records being too lethargic to bother. That is the Phase 4 reading work
+holding up on real data, not a test fixture.
+
+#### Dense retrieval's one catastrophic failure
+
+Asked *"the time i won a tombola"*, the system said it wasn't in the journals.
+Adding three words of context — *"at the Vespugia baths"* — returned the right
+entry at rank 1.
+
+The entry contains the word **tombola**. It is one of only three in the archive
+that do. Vector search did not return it in the **top 100**:
+
+| retriever | rank of the correct entry |
+|---|---|
+| vector | **not in top 100** |
+| BM25 | 4 |
+| hybrid | 9 |
+
+A rare word inside a 1,600-character chunk barely moves the embedding, so the
+chunk ranks on everything else it is about. Adding context fixed it by giving the
+embedding something to work with — which is not something a person should have to
+know in order to search their own diary.
+
+Switching retriever doesn't fix it either: hybrid ranks it 9th, still outside the
+default k=5, and BM25 alone costs recall@1 0.77 → 0.46 across the eval set. So
+instead, **two of the five slots are reserved for chunks containing a rare literal
+term from the query** (`retrieval.rare_slots`). A floor, not a quota — unused when
+the query has no rare term. On the eval set it changed recall@1, recall@5 and
+misses not at all, and moved completeness@5 from 0.54 to 0.58.
+
+Reserving the slots was the easy part. Deciding *what goes in them* took four
+attempts, every correction forced by a query that failed rather than by review:
+
+1. **Filled in query order.** A question naming two rare terms gave both slots to
+   whichever came first, and one went to an entry about the same subject in an
+   entirely different country. It displaced two ranked results and flipped an
+   answerable question from cited 4/4 to **refused 4/4**.
+2. **Ranked by mention count.** Better, but useless for a noun. Asked about a
+   *tiffin*, all **nine** entries containing the word mentioned it exactly once —
+   a perfect tie — so the slots went to the first two by date and the right entry,
+   sixth in that arbitrary order, got nothing.
+3. **Ranked by similarity to the query.** The fix, and the reason the whole
+   mechanism works:
+
+   | | that entry |
+   |---|---|
+   | similarity to the query | 0.487 — weak |
+   | rank among all 4,042 chunks | 9th — outside any sane window |
+   | rank among the 9 containing the word | **1st**, 0.487 vs 0.422 |
+
+   Neither signal locates it alone. The lexical filter narrows to nine, the
+   vector chooses among them. My earlier version did the narrowing and then threw
+   the ranking away.
+4. **One chunk per entry.** Ranking purely by similarity then spent both slots on
+   two chunks of the *same day*, surfacing one entry where the slots exist to
+   surface entries the ranker missed.
+
+Term coverage still outranks similarity — a chunk containing two of the query's
+rare terms beats one that is merely a closer embedding.
+
+#### Every rule pushed toward caution, and nothing pushed back
+
+With retrieval fixed, the question still failed — now at the generation step. The
+entry describes picking tickets and the attendant clapping, but never uses the
+word *won*, so the model answered "I can't find that in the journals" **3 times
+out of 3** while holding the correct excerpt.
+
+That is the accumulated grounding rules working exactly as written. Each one was
+added to stop a specific over-claim, and together they left no way to say "here is
+the relevant entry, and here is what it does not establish". One rule was missing:
+
+> Refusing is for when the excerpts contain nothing relevant. If an excerpt is
+> clearly about what the question asks but does not settle it, give that excerpt
+> and say what it does not establish. Do not refuse in that case.
+
+Measured before adopting it, 3 runs each — the absent questions are the guard rail,
+because a rule that makes the model *less* willing to refuse is exactly the kind
+that could destroy the 100%:
+
+| | before | after |
+|---|---|---|
+| the affected question | refuse 3/3 | **cite 3/3** |
+| a second unstable question | cite, off, cite | cite 3/3 |
+| refusal on things that never happened | 12/12 | **12/12** |
+
+#### recall@1 was hiding this
+
+The harness scored that query as a **success**. Its ground truth listed 2 entries,
+retrieval put one at rank 1, and `recall@1` asks only "did something correct rank
+first". It printed `[1/4 found]` beside the result and then averaged that away.
+
+`completeness@k` now reports it directly — what fraction of *all* expected entries
+were surfaced, over the 8 of 13 questions that expect more than one:
+
+```
+recall@1          0.77
+completeness@10   0.71   (17/24 expected entries surfaced)
+```
+
+A metric that answers the question you are actually asking is worth more than a
+better score on one that doesn't.
+
 ### Phase 4 — First working RAG
 
 ```bash
@@ -545,13 +772,102 @@ refusal has to come from the model reading the excerpts and noticing the answer
 is not there — which it does: **4 of 4 absent questions refused**, including the
 two that would have passed any threshold.
 
+#### Thinking mode silently ate every answer
+
+The single most expensive bug so far, and it did not look like a bug. Generation
+would sometimes take minutes and return an empty string; `num_predict: 60`
+returned empty strings every time. Measured on one question (1,593-token prompt):
+
+| | tokens generated | wall time | answer returned |
+|---|---|---|---|
+| thinking default | 6,599 | 429s | **empty** |
+| `think: false` | 83 | 14.4s | correct, correctly cited |
+
+Ollama's `/api/generate` returned neither `response` **nor** `thinking` — seven
+minutes of reasoning, discarded. And an empty answer reads exactly like a
+refusal, so the failure impersonated the feature built to catch hallucination.
+
+`generation.think: false` is now the default, and `generate()` raises if it ever
+sees tokens generated with no text returned rather than handing back `""`.
+
+Two related fixes came out of chasing it:
+
+- **Generation streams.** A non-streaming request cannot distinguish a slow
+  answer from a hung server; ten minutes of silence produced no output at all.
+  The timeout is now per-read, so a real stall trips in seconds.
+- **A killed client does not stop the work.** Ollama keeps generating after the
+  request is abandoned, and `-np 1` means one slot — so every later request
+  queues behind the orphan. A cascade of "timeouts" turned out to be one
+  abandoned request blocking the rest. `ollama stop` will not clear it while it
+  is mid-generation; the runner has to be killed.
+
+#### Context windows are not free
+
+Ollama loaded the 639 MB embedding model with a **32K** window costing 4.0 GB of
+KV cache, alongside a 16K chat window — 12.1 GB resident on a 34 GB machine, and
+it swapped. The longest chunk in this archive is **417 tokens**, so the embedding
+window is now 1,024 and the chat window 8,192: 9.4 GB, and the same question went
+from 176s to 41s.
+
+Shrinking an embedding window is only safe if nothing was being truncated, so
+that was checked rather than assumed — the longest chunks re-embed to cosine
+1.000000 against their stored vectors, so the index did not need rebuilding.
+
+#### A question can smuggle in a premise the journals never confirm
+
+Asking *"which places did I snorkel at on \<one island of an archipelago\>?"*
+returned a confident list of beaches — on the wrong islands. The trip labels are
+region-level (the archipelago, not the island), the archive has no GPS, and the
+entries rarely name the island, so nothing in the excerpts supported the island
+named in the question. The model accepted the premise because the question
+asserted it.
+
+The fix is a prompt rule, and its wording matters more than expected:
+
+| rule | answerable place question | unconfirmable place question |
+|---|---|---|
+| none | cites correctly 3/3 | **invents 3/3** |
+| "check the excerpts confirm it" | **refuses 3/3** | refuses 3/3 |
+| "check the excerpts *mention* it" | cites correctly 3/3 | refuses 2/3 |
+
+The broad wording fired on any named place and refused a question retrieval had
+answered at rank 1. Asking the concrete, checkable question — do the excerpts
+*mention* it? — keeps those answers and still catches most false premises.
+
+One case stays unfixable by prompting: a show seen at a named theatre that the
+journal never places in the district the question asks about. Resolving it needs
+to know the venue is in that district, which is exactly the world knowledge the
+grounding rules forbid. Logged for Phase 5, not papered over.
+
+#### Measured end to end
+
+`uv run python -m src.evaluate --generate` now scores the answer, not just the
+retrieval — because retrieval metrics cannot see either failure that matters
+once a model is in the loop:
+
+```
+refused when absent      4/4   (100%)   <- the one that matters
+cited an expected date   9/12  (75%)
+cited a known-wrong date 0/12
+refused a real question  3/12           <- 2 are genuine retrieval misses
+answered with no date    0/12
+median time              9.4s
+```
+
+75% grounded exactly equals recall@1, so generation gives up nothing retrieval
+found. Zero known-wrong citations, with seven known-wrong entries sitting in the
+retrieval window.
+
 - [x] Assemble the prompt: question + retrieved chunks + instructions
 - [x] Ground it hard — answer only from provided entries, say "I can't find that
       in the journals" rather than guess
 - [x] Cite the source entry date for every claim; warn when an answer cites none
 - [x] Set `num_ctx` explicitly — Ollama's default truncates the prompt silently
-- [ ] Verify offline operation with the network disconnected
-- [ ] Measure refusal and citation rates as part of the eval harness
+- [x] Disable thinking mode, and fail loudly instead of returning an empty answer
+- [x] Stream generation so a slow answer is distinguishable from a hung server
+- [x] Refuse premises the excerpts do not support, without refusing real questions
+- [x] Verify offline operation — `scripts/verify-offline.sh`
+- [x] Measure refusal and citation rates as part of the eval harness
 
 ### Phase 5 — Hybrid retrieval and the experience index
 

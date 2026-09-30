@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import sys
 from dataclasses import dataclass, asdict
@@ -112,10 +113,11 @@ def matches(hit: dict, expected: list[str]) -> str | None:
     return None
 
 
-def evaluate(questions: list[tuple[str, str]], k: int) -> list[Result]:
+def evaluate(questions: list[tuple[str, str]], k: int, mode: str | None = None,
+             rare_slots: int | None = None) -> list[Result]:
     results: list[Result] = []
     for q, expected, wrong in questions:
-        hits = search(q, k=k)
+        hits = search(q, k=k, mode=mode, rare_slots=rare_slots)
         rank = score = None
         matched = None
         last_right: int | None = None
@@ -150,6 +152,106 @@ def similarity(hit: dict) -> float:
     """LanceDB returns L2 distance; unit-norm vectors make this cosine."""
     d = hit.get("_distance")
     return 1 - (d * d) / 2 if d is not None else float("nan")
+
+
+def check_generation(questions: list[tuple[str, list[str], list[str]]],
+                     k: int, mode: str | None = None,
+                     rare_slots: int | None = None) -> list[dict]:
+    """Score the answer, not the retrieval.
+
+    Retrieval metrics cannot see the two failures that matter most once a model
+    is in the loop. An absent question retrieves a confident 0.76 hit and looks
+    fine here while the answer invents an event; and a question can retrieve the
+    right entry at rank 1 and still be answered from the wrong one.
+
+    So: absent questions are scored on whether the model REFUSED, and answerable
+    ones on whether the dates it cited are dates we expected.
+    """
+    from src.ask import ask                      # imported here — costs a model load
+
+    rows: list[dict] = []
+    for q, expected, wrong in questions:
+        r = ask(q, k=k, mode=mode, rare_slots=rare_slots)
+        cited = set(re.findall(r"\d{4}-\d{2}-\d{2}", r["answer"]))
+        # An expected value may be a date, an entry id or a chunk id; all of them
+        # begin with the date, so containment is the right test.
+        def hits_any(date: str, pool: list[str]) -> bool:
+            return any(date in e for e in pool)
+        rows.append({
+            "question": q,
+            "absent": is_absent(expected),
+            "refused": r["refused"],
+            "cited": sorted(cited),
+            "cited_right": sorted(d for d in cited if hits_any(d, expected)),
+            "cited_wrong": sorted(d for d in cited if hits_any(d, wrong)),
+            "uncited": not cited and not r["refused"],
+            "seconds": round(r["retrieval_s"] + r["generate_s"], 1),
+        })
+    return rows
+
+
+def report_generation(rows: list[dict]) -> dict:
+    absent = [r for r in rows if r["absent"]]
+    real = [r for r in rows if not r["absent"]]
+
+    print("\n── generation " + "─" * 55)
+    for r in rows:
+        if r["absent"]:
+            mark = "ok  " if r["refused"] else "INVENTED"
+            detail = "refused" if r["refused"] else f"answered, cited {r['cited']}"
+        elif r["refused"]:
+            mark = "REFUSED"
+            detail = "said it could not find an answer"
+            # A refusal can still name dates while explaining itself, and those
+            # count toward the known-wrong tally. Hiding them here made the
+            # summary report a citation no row accounted for.
+            if r["cited"]:
+                detail += f" (mentioned {', '.join(r['cited'])}"
+                if r["cited_wrong"]:
+                    detail += " — KNOWN-WRONG"
+                detail += ")"
+        elif r["cited_right"]:
+            mark = "ok  "
+            detail = f"cited {', '.join(r['cited_right'])}"
+            if r["cited_wrong"]:
+                detail += f"  (also known-wrong {', '.join(r['cited_wrong'])})"
+        elif r["uncited"]:
+            mark = "UNCITED"
+            detail = "answered with no date — ungrounded"
+        else:
+            mark = "OFF  "
+            detail = f"cited only {', '.join(r['cited']) or 'nothing'}"
+        print(f"  {mark:<8} {r['seconds']:>5.1f}s  {r['question'][:46]:<46} {detail}")
+
+    # Refusal on absent questions is the headline number: it is the only defence
+    # against a fluent answer about something that never happened, and no
+    # similarity threshold can provide it.
+    stats = {
+        "refused_absent": sum(r["refused"] for r in absent),
+        "absent": len(absent),
+        "grounded": sum(bool(r["cited_right"]) for r in real),
+        "real": len(real),
+        # Only in ANSWERS. A refusal that names a known-wrong entry is
+        # explaining what it looked at and rejected, which is the behaviour we
+        # want; counting it as a bad citation punished the model for showing
+        # its work.
+        "cited_known_wrong": sum(bool(r["cited_wrong"]) and not r["refused"]
+                                 for r in real),
+        "refused_real": sum(r["refused"] for r in real),
+        "uncited_real": sum(r["uncited"] for r in real),
+        "median_seconds": round(statistics.median(r["seconds"] for r in rows), 1),
+    }
+    n_abs, n_real = max(len(absent), 1), max(len(real), 1)
+    print()
+    print(f"  refused when absent      {stats['refused_absent']}/{len(absent)}"
+          f"   ({stats['refused_absent']/n_abs:.0%})   <- the one that matters")
+    print(f"  cited an expected date   {stats['grounded']}/{len(real)}"
+          f"   ({stats['grounded']/n_real:.0%})")
+    print(f"  cited a known-wrong date {stats['cited_known_wrong']}/{len(real)}")
+    print(f"  refused a real question  {stats['refused_real']}/{len(real)}")
+    print(f"  answered with no date    {stats['uncited_real']}/{len(real)}")
+    print(f"  median time              {stats['median_seconds']}s")
+    return stats
 
 
 def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
@@ -189,6 +291,22 @@ def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
         "median_rank": statistics.median(ranks) if ranks else None,
         "misses": len(findable) - len(ranks),
     }
+
+    # Completeness, kept separate from recall on purpose.
+    #
+    # recall@1 asks "did SOMETHING correct rank first". For a question expecting
+    # one entry that is the whole story; for "which entries mention X" it is
+    # actively misleading. A name occurring in 4 entries returned 1 of them and
+    # still scored a recall@1 hit, because the one it found ranked first — the
+    # harness printed [1/4] beside it and then averaged it into nothing.
+    multi = [r for r in findable if len(r.expected) > 1]
+    if multi:
+        got = sum(r.found for r in multi)
+        want = sum(len(r.expected) for r in multi)
+        summary["multi_answer_questions"] = len(multi)
+        summary[f"completeness@{k}"] = got / want
+        summary["answers_found"] = got
+        summary["answers_expected"] = want
     if any(r.wrong_above or r.wrong_in_window for r in findable):
         summary["wrong_above_total"] = sum(r.wrong_above for r in findable)
         summary["wrong_in_window_total"] = sum(r.wrong_in_window for r in findable)
@@ -204,6 +322,11 @@ def report(results: list[Result], k: int, failures_only: bool = False) -> dict:
     if summary["mean_rank"] is not None:
         print(f"  {'mean rank (when found)':<26}{summary['mean_rank']:.1f}")
     print(f"  {'misses':<26}{summary['misses']}")
+    if "multi_answer_questions" in summary:
+        print(f"  {'multi-answer questions':<26}{summary['multi_answer_questions']}")
+        print(f"  {f'completeness@{k}':<26}{summary[f'completeness@{k}']:.2f}"
+              f"   ({summary['answers_found']}/{summary['answers_expected']}"
+              f" expected entries surfaced)")
     if "wrong_above_total" in summary:
         print(f"  {'wrong outranking a right':<26}{summary['wrong_above_total']}"
               f"   <- should fall once something reads the text")
@@ -219,8 +342,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("-k", type=int, default=10, help="window to search within")
     ap.add_argument("--failures", action="store_true", help="show only misses")
+    ap.add_argument("--mode", choices=["vector", "fts", "hybrid"],
+                    help="retrieval mode to score (default: config)")
+    ap.add_argument("--rare-slots", type=int,
+                    help="slots reserved for rare literal matches (0 disables)")
     ap.add_argument("--save", metavar="NAME", help="save this run for comparison")
     ap.add_argument("--compare", metavar="NAME", help="diff against a saved run")
+    ap.add_argument("--generate", action="store_true",
+                    help="also run the model and score refusals and citations "
+                         "(slow — one generation per question)")
     args = ap.parse_args()
 
     questions = load_questions(QUESTIONS)
@@ -233,9 +363,19 @@ def main() -> None:
             print(f"no questions in {QUESTIONS}")
         return
 
-    print(f"{len(questions)} question(s), window k={args.k}\n")
-    results = evaluate(questions, args.k)
+    print(f"{len(questions)} question(s), window k={args.k}, "
+          f"mode={args.mode or CONFIG.retrieval.mode}\n")
+    results = evaluate(questions, args.k, mode=args.mode,
+                       rare_slots=args.rare_slots)
     summary = report(results, args.k, args.failures)
+
+    if args.generate:
+        # k here is the PRODUCTION excerpt count, not the retrieval window. -k 10
+        # widens the window to see how far down a correct answer sits; feeding the
+        # model 10 excerpts would measure a configuration nobody runs.
+        summary["generation"] = report_generation(
+            check_generation(questions, CONFIG.retrieval.top_k, mode=args.mode,
+                             rare_slots=args.rare_slots))
 
     if args.save:
         EVAL_DIR.mkdir(parents=True, exist_ok=True)

@@ -63,6 +63,11 @@ class Embed:
     dimensions: int
     query_instruction: str
     batch: int = 32
+    # Ollama would otherwise load this model with a 32K window and spend ~4 GB
+    # of KV cache on a 639 MB model. Must exceed the longest chunk or text is
+    # truncated SILENTLY and its tail stops being findable — measured longest
+    # here is 417 tokens, so this has 2.5x headroom. Raise it if chunk size does.
+    num_ctx: int = 1024
 
     def query_prompt(self, query: str) -> str:
         """Queries carry the instruction prefix. Documents never do."""
@@ -77,12 +82,19 @@ class Retrieval:
     mode: str = "hybrid"          # hybrid | vector | fts
     vector_weight: float = 1.0
     fts_weight: float = 1.0
+    # Slots held for chunks containing a rare literal query term. See
+    # search.rare_term_hits: dense retrieval missed an entry containing the
+    # user's exact rare word in its top 100. 0 disables.
+    rare_slots: int = 2
 
 
 @dataclass(frozen=True)
 class Generation:
-    num_ctx: int = 16384
+    num_ctx: int = 8192
     temperature: float = 0.2
+    # See config.example.yaml: thinking produced 6,599 discarded tokens and an
+    # empty response. Off by default; a caller can override per question.
+    think: bool = False
 
 
 @dataclass(frozen=True)

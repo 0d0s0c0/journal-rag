@@ -29,6 +29,13 @@ TOO_GENERIC = {
     "north", "south", "east", "west", "city", "town", "park", "island",
     "beach", "lake", "river", "bay", "old", "new", "house", "home", "road",
     "street", "market", "museum", "hotel", "temple", "church", "castle",
+    # Real place names in this archive that are also ordinary English. Left in,
+    # they fire on prose like "long entries" or "region-level labels" — and a
+    # hook that cries wolf on every commit gets bypassed, which is worse than
+    # not having one. The names they shadow are generic enough to reveal little.
+    "long", "nice", "region", "district", "central", "national", "royal",
+    "great", "little", "upper", "lower", "grand", "high", "middle", "point",
+    "cross", "well", "wells", "bath", "reading", "stirling", "sandwich",
 }
 
 FILENAME_RE = re.compile(r"^(?P<trip>.+?)\s*-\s*\d{4}$")

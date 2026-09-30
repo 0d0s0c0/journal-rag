@@ -215,15 +215,32 @@ The fix is to set `num_ctx` explicitly in the API request options (or via a Mode
 rather than relying on the default:
 
 ```json
-{ "model": "gemma4:12b", "prompt": "...", "options": { "num_ctx": 65536 } }
+{ "model": "gemma4:12b", "prompt": "...", "options": { "num_ctx": 8192 } }
 ```
 
-Do this in Phase 4 and keep the value in `config.yaml`.
+Both values now live in `config.yaml` (`generation.num_ctx`, and a 1,024 window on
+the embedding requests).
 
 Bigger is not automatically better: the KV cache grows with context length and is
 usually the real memory ceiling, not the weights — which is what
-`OLLAMA_KV_CACHE_TYPE=q8_0` in the serve script exists to mitigate. Size `num_ctx`
-against the actual volume of retrieved chunks, which Phase 3 will reveal.
+`OLLAMA_KV_CACHE_TYPE=q8_0` in the serve script exists to mitigate. Measured here,
+with both models resident on a 34 GB machine:
+
+| | window | resident |
+|---|---|---|
+| `gemma4:12b` | 16,384 | 8.1 GB |
+| `qwen3-embedding:0.6b` (639 MB of weights) | 32,768 | **4.0 GB** |
+| | | 12.1 GB — and it swapped |
+
+A 639 MB model holding 4 GB of KV cache is pure waste: the longest chunk in this
+archive is **417 tokens**. Dropping the embedding window to 1,024 and the chat
+window to 8,192 (a 5-excerpt prompt is ~1,600 tokens; k=10 stays under 4,000) took
+it to 9.4 GB, and one question went from 176s to 41s.
+
+Shrinking an embedding window is only safe if nothing was being truncated — so
+check rather than assume, because a truncated re-embed would silently disagree
+with the stored vectors. The longest chunks here re-embed to cosine 1.000000
+against what is in the index, so no rebuild was needed.
 
 **Worth verifying rather than assuming**, whenever answers look oddly incomplete:
 
@@ -231,12 +248,48 @@ against the actual volume of retrieved chunks, which Phase 3 will reveal.
 pgrep -fl llama-server | grep -o '\-c [0-9]*'
 ```
 
+#### Thinking mode can consume the entire response
+
+gemma4 has a thinking mode, and with it on, `/api/generate` returned **6,599
+tokens over 429 seconds and an empty `response`** — with no `thinking` field
+either, so the reasoning was unrecoverable. It also explains `num_predict: 60`
+returning empty strings: the budget went to reasoning that was then discarded.
+
+```bash
+# The tell: tokens generated, nothing returned.
+curl -s localhost:11434/api/generate -d '{"model":"gemma4:12b","prompt":"hi","stream":false}' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["eval_count"], repr(d["response"][:40]))'
+```
+
+Send `"think": false` (a top-level field, **not** inside `options`). For grounded
+extraction from supplied excerpts there is nothing for a chain of thought to add.
+
+#### A killed client does not stop the generation
+
+Ollama keeps generating after the HTTP client disconnects, and the runner is
+started with `-np 1` — one slot. So an abandoned request keeps working and every
+later request queues behind it. This presents as a cascade of unrelated timeouts,
+and the giveaway is CPU burning with no request outstanding:
+
+```bash
+ps -Ao pcpu,command | grep llama-server | grep -v grep   # ~150% and nothing running?
+ollama stop gemma4:12b            # will NOT clear it mid-generation
+pkill -f 'llama-server.*--no-jinja'   # Ollama reloads on the next request
+```
+
+This is also why `src/ask.py` streams: a non-streaming request cannot tell a slow
+answer from a hung server.
+
 **Embeddings — `qwen3-embedding:0.6b`** (639 MB, 32K context, Apache 2.0). Small, fast,
 from the family that topped the MTEB multilingual leaderboard.
 
-The 32K context matters more than it appears: a journal entry longer than the embedding
-model's window is **silently truncated**, and the tail simply stops being findable with
-no error to warn you.
+The context window matters more than it appears: text longer than the embedding model's
+window is **silently truncated**, and the tail simply stops being findable with no error
+to warn you. That is an argument for checking the real number, not for maximising it —
+the longest chunk in this archive measures 417 tokens, so the requests cap the window at
+1,024 and the model's 32K capability is irrelevant. What would be dangerous is embedding
+whole *entries* (up to ~1,900 characters here) or, later, longer documents without
+re-measuring.
 
 > Changing the embedding model later means re-embedding the whole corpus — the vector
 > dimensions change and the existing index becomes invalid. Minutes for a personal
