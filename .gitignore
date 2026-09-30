@@ -52,8 +52,12 @@ logs/
 # to be tracked. Use nbstripout as a git filter to clear outputs.
 .ipynb_checkpoints/
 
-# ── The archive's own place names, used by the pre-commit hook ───
+# ── Pattern lists derived from the archive, used by the pre-commit hook ───
+# They live outside the repo, so this is a backstop for a stray copy.
 private-names.txt
+private-dates.txt
+private-phrases.txt
+private-*.txt
 
 # ── Private working docs (README.md is the tracked one) ──────
 PLAN.md

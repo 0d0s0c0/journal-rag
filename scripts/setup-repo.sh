@@ -19,7 +19,7 @@ echo "Pointing git at scripts/hooks..."
 git config core.hooksPath scripts/hooks
 chmod +x scripts/hooks/*
 
-echo "Building the private place-name list (gitignored)..."
+echo "Building the private pattern lists (gitignored)..."
 uv run python -m src.private_names 2>/dev/null || \
   echo "  skipped — no archive configured yet; run it once data_root is set"
 

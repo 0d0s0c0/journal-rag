@@ -76,7 +76,79 @@ if [ -f "$NAMES_FILE" ]; then
   fi
 fi
 
-# ── 4. Large files, a weak proxy for "this is data, not code" ────────────────
+# ── 4. Entry dates and episode wording from the archive ─────────────────────
+# Place names were only ever half the problem. The repo also accumulated real
+# entry dates and real episode descriptions — a real date beside a real
+# question in an eval example, an entry's date in a test fixture — and none
+# of it tripped the name check. A date beside a description is every bit as
+# identifying as a place name, and it reached a public repo.
+#
+# Done in python rather than a shell loop: there are ~1,700 dates, and a hook
+# slow enough to be annoying is a hook that gets bypassed.
+DATA_DIR="${JOURNAL_DATA:-$HOME/playground/journal-data}"
+if [ -n "${staged_content:-}" ]; then
+  tmp_staged=$(mktemp)
+  printf '%s' "$staged_content" > "$tmp_staged"
+  if ! python3 - "$tmp_staged" "$DATA_DIR/private-dates.txt" \
+                 "$DATA_DIR/private-phrases.txt" <<'PY'
+import os, re, sys
+
+staged_path, dates_path, phrases_path = sys.argv[1:4]
+staged = open(staged_path, encoding="utf-8", errors="ignore").read()
+
+def load(path):
+    if not os.path.exists(path):
+        return []
+    return [l.strip() for l in open(path, encoding="utf-8")
+            if l.strip() and not l.startswith("#")]
+
+bad = []
+
+# Dates. The trailing guard keeps this off ISO timestamps: a lockfile's
+# `upload-time = "2024-12-04T17:35:28Z"` is PyPI metadata, not a journal entry,
+# and an unguarded rule rewrote one during history cleanup.
+dates = set(load(dates_path))
+if dates:
+    for d in set(re.findall(r"(?<!\d)\d{4}-\d{2}-\d{2}(?![\dT])", staged)):
+        if d in dates:
+            bad.append(("an entry date from the archive", d))
+
+# Phrases: multi-word episode wording matched anywhere, single rare words
+# matched on word boundaries. The file separates the two with a marker line.
+raw = open(phrases_path, encoding="utf-8").read().splitlines() \
+    if os.path.exists(phrases_path) else []
+phrases, words, in_words = [], [], False
+for line in raw:
+    s = line.strip()
+    if s.startswith("# ---"):
+        in_words = True
+        continue
+    if not s or s.startswith("#"):
+        continue
+    (words if in_words else phrases).append(s.lower())
+
+low = staged.lower()
+for p in phrases:
+    if p in low:
+        bad.append(("episode wording from the evaluation questions", p))
+for w in words:
+    if re.search(rf"\b{re.escape(w)}\b", low):
+        bad.append(("a word that identifies a specific entry", w))
+
+for kind, what in bad:
+    print(f"\033[0;31mBLOCKED\033[0m  {kind}: {what}")
+if bad:
+    print("          use an invented date or episode instead — see "
+          "src/private_names.py")
+sys.exit(1 if bad else 0)
+PY
+  then
+    fail=1
+  fi
+  rm -f "$tmp_staged"
+fi
+
+# ── 5. Large files, a weak proxy for "this is data, not code" ────────────────
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   size=$(git cat-file -s "$(git rev-parse ":$f" 2>/dev/null)" 2>/dev/null || echo 0)

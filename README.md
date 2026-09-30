@@ -263,6 +263,49 @@ Derived artifacts don't look like journals but contain the text verbatim:
 - GitHub push protection scans for credentials, not personal writing. It will not catch
   this.
 
+### The hook checks three things, because one was not enough
+
+`scripts/hooks/pre-commit` blocks staged changes containing anything derived from
+the archive. The pattern lists are rebuilt by `uv run python -m src.private_names`
+and live outside the repo:
+
+| | matched as | why |
+|---|---|---|
+| place names | word boundary, case-insensitive | writing *about* a private archive means reaching for its real names as the obvious illustration |
+| entry dates | exact, never inside an ISO timestamp | a date beside a description identifies an entry as surely as a name |
+| episode wording | phrase as substring; rare word on word boundary | a question describing what happened is archive content too |
+
+Only the first existed at first, and it was half a defence. Real entry dates and
+real episode descriptions accumulated in eval examples and test fixtures, tripped
+nothing, and reached a public repo.
+
+The word rule is the interesting one, because the obvious version does not work.
+Blocking every word from a question would reject ordinary prose; blocking none
+misses the single words that leaked. What separates them is measurable — how many
+entries contain the word:
+
+```
+     3  a person's name        <- identifies one entry
+    11  a specific dish        <- identifies one entry
+   283  "tire"                 <- describes a category
+   388  "bike"                 <- describes a category
+```
+
+So a word is blocked when it appears in at most 15 entries. The gap is wide and
+nothing in the question set falls inside it. Words like *tire* and *bike* stay
+usable individually — while the **phrase** they form is blocked, which is what
+actually identified the episode.
+
+Two failures worth keeping:
+
+- The timestamp guard exists because an earlier unguarded date rule rewrote a
+  PyPI `upload-time` inside `uv.lock` during history cleanup. A date is only a
+  date when nothing follows it.
+- Writing this check leaked data. The commit adding it was blocked by itself: the
+  explanatory comments used a real date and a real episode as the illustration.
+  That is the failure mode in miniature, and the reason the rule cannot live in
+  anyone's memory.
+
 ---
 
 ## Steps
