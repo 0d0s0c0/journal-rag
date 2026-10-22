@@ -123,7 +123,7 @@ def _vectors_for(chunk_ids) -> dict[str, list]:
 
 
 def rare_term_hits(query: str, limit: int, year: int | None = None,
-                   trip: str | None = None, max_terms: int = 4,
+                   trip: str | None = None, max_terms: int = 8,
                    qv: list[float] | None = None) -> list[dict]:
     """Chunks containing a RARE literal term from the query.
 
@@ -145,8 +145,19 @@ def rare_term_hits(query: str, limit: int, year: int | None = None,
     Rarity is the whole point of the threshold: guaranteeing slots for a common
     word would spend them on nothing in particular.
     """
-    terms = [t for t in re.findall(r"[\w']+", query.lower())
+    toks = re.findall(r"[\w']+", query.lower())
+    words = [t for t in toks
              if t not in STOP and len(t) > 3 and not YEAR_IN_QUERY.fullmatch(t)]
+    # Adjacent content-word PAIRS as well as single words. A query can quote the
+    # archive almost verbatim while every individual word in it is common. One
+    # real example: a four-word query whose content words occur in 96, 71 and
+    # 559 entries, while one adjacent PAIR of them occurs in 2. Single-word
+    # rarity reserved no slot, so the entry containing the phrase literally was
+    # absent from the top 10 for the life of the eval set — and BM25 ranked it
+    # first, which is the tell that a lexical signal was being discarded.
+    pairs = [f"{a} {b}" for a, b in zip(toks, toks[1:])
+             if a in set(words) and b in set(words)]
+    terms = words + pairs
 
     rare: dict[str, list[dict]] = {}
     for t in terms[:max_terms]:

@@ -56,6 +56,27 @@ class Result:
     wrong_in_window: int = 0  # known-wrong entries anywhere in the window
 
 
+def split_says(field: str) -> list[str]:
+    """Split a SAYS field on commas, except inside quotes.
+
+    Journal prose contains commas, so pasting a quoted sentence into a
+    comma-separated field shreds it. One real example produced SEVEN fragments
+    from a single pasted sentence — each a meaningless clause ending mid-phrase,
+    and each then silently failing to match anything, so the question appeared
+    to be asserting content while asserting nothing.
+
+    Quoting protects the commas:  SAYS "a phrase, with commas", another
+    Curly quotes are normalised, because they are what a word processor pastes.
+    """
+    import csv
+    field = field.replace("\u201c", '"').replace("\u201d", '"')
+    try:
+        parts = next(csv.reader([field], skipinitialspace=True))
+    except Exception:
+        parts = field.split(",")
+    return [p.strip().strip('"').strip() for p in parts if p.strip().strip('"').strip()]
+
+
 def load_questions(path: Path) -> list[tuple[str, list[str], list[str], list[str]]]:
     out: list[tuple[str, str]] = []
     if not path.exists():
@@ -84,7 +105,7 @@ def load_questions(path: Path) -> list[tuple[str, list[str], list[str], list[str
         for field in parts[2:]:
             f = field.strip()
             if f.upper().startswith("SAYS"):
-                says = [a.strip() for a in f[4:].lstrip(": ").split(",") if a.strip()]
+                says = split_says(f[4:].lstrip(": "))
             else:
                 if f.upper().startswith("NOT"):
                     f = f[3:].lstrip(": ")
