@@ -160,6 +160,63 @@ def similarity(hit: dict) -> float:
     return 1 - (d * d) / 2 if d is not None else float("nan")
 
 
+def validate(questions) -> int:
+    """Report questions that can never pass. Returns the problem count.
+
+    Bad ground truth is worse than a missing question: it moves the metrics
+    without anyone knowing why. Three failure modes have actually occurred here:
+
+      duplicate dates   the scorer records WHICH expected string matched, so
+                        repeats collapse. One question listed the same date
+                        three times and could never score better than 3 of 5.
+      unknown date      a date with no entry behind it inflates the denominator
+                        and silently depresses completeness.
+      unsatisfiable SAYS  the required string appears in none of the expected
+                        entries. "mashed potatoes" was written where the journal
+                        says "mashed potato" — an exact substring check, so it
+                        could never match. Use the shortest form.
+
+    The SAYS check is a heuristic, not a proof: the model may legitimately
+    paraphrase. But a string absent from the source is unlikely to appear in a
+    grounded answer, so it is worth a warning.
+    """
+    import json as _json
+    texts: dict[str, list[str]] = {}
+    for path in (CONFIG.paths.entries, CONFIG.paths.text / "chunks.jsonl"):
+        if not path.exists():
+            continue
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            row = _json.loads(line)
+            if row.get("entry_date"):
+                texts.setdefault(row["entry_date"], []).append(row.get("text", ""))
+
+    problems = 0
+    for q, expected, _wrong, says in questions:
+        msgs = []
+        if not is_absent(expected):
+            dups = sorted({d for d in expected if expected.count(d) > 1})
+            if dups:
+                msgs.append(f"duplicate expected dates {dups} — caps the score")
+            unknown = [d for d in expected if d[:10] not in texts]
+            if unknown:
+                msgs.append(f"no entry for {unknown}")
+            blob = " ".join(t for d in expected
+                            for t in texts.get(d[:10], [])).lower()
+            for t in says:
+                if t.lower() not in blob:
+                    msgs.append(f"SAYS {t!r} is in none of the expected entries")
+        if msgs:
+            problems += 1
+            print(f"  {q[:58]}")
+            for m in msgs:
+                print(f"      {m}")
+    print(f"  {problems} question(s) with problems" if problems
+          else "  all questions satisfiable")
+    return problems
+
+
 def check_generation(questions: list[tuple[str, list[str], list[str]]],
                      k: int, mode: str | None = None,
                      rare_slots: int | None = None) -> list[dict]:
@@ -367,6 +424,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("-k", type=int, default=10, help="window to search within")
     ap.add_argument("--failures", action="store_true", help="show only misses")
+    ap.add_argument("--validate", action="store_true",
+                    help="check the question file for unsatisfiable entries "
+                         "and exit")
     ap.add_argument("--filter", metavar="TEXT",
                     help="only score questions containing TEXT "
                          "(case-insensitive) — for iterating on a few")
@@ -390,6 +450,9 @@ def main() -> None:
         else:
             print(f"no questions in {QUESTIONS}")
         return
+
+    if args.validate:
+        sys.exit(1 if validate(questions) else 0)
 
     if args.filter:
         before = len(questions)
