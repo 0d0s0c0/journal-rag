@@ -367,6 +367,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("-k", type=int, default=10, help="window to search within")
     ap.add_argument("--failures", action="store_true", help="show only misses")
+    ap.add_argument("--filter", metavar="TEXT",
+                    help="only score questions containing TEXT "
+                         "(case-insensitive) — for iterating on a few")
     ap.add_argument("--mode", choices=["vector", "fts", "hybrid"],
                     help="retrieval mode to score (default: config)")
     ap.add_argument("--rare-slots", type=int,
@@ -387,6 +390,16 @@ def main() -> None:
         else:
             print(f"no questions in {QUESTIONS}")
         return
+
+    if args.filter:
+        before = len(questions)
+        questions = [q for q in questions if args.filter.lower() in q[0].lower()]
+        if not questions:
+            sys.exit(f"no question matches {args.filter!r}")
+        # Rates are a fraction of the question set, so a filtered run is not
+        # comparable with a full one. Saying so beats printing a tempting number.
+        print(f"FILTERED to {len(questions)} of {before} questions "
+              f"({args.filter!r}) — rates below are NOT comparable to a full run")
 
     print(f"{len(questions)} question(s), window k={args.k}, "
           f"mode={args.mode or CONFIG.retrieval.mode}\n")
