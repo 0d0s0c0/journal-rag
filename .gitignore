@@ -59,6 +59,11 @@ private-dates.txt
 private-phrases.txt
 private-*.txt
 
+# ── Saved conversation transcript (src/transcript.py) ───────
+# Contains whatever was discussed, which for this project means
+# journal content. Written outside the repo; this is a backstop.
+conversation*.txt
+
 # ── Private working docs (README.md is the tracked one) ──────
 PLAN.md
 
