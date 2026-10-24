@@ -168,16 +168,24 @@ class TestRareTermRanking:
         def fake_lookup(term, year=None, trip=None, substring=False):
             return [dict(r) for r in corpus.get(term, [])]
         monkeypatch.setattr("src.search.term_lookup", fake_lookup)
-        # One fake dimension per chunk: cosine against [1.0] returns the score.
-        monkeypatch.setattr("src.search._vectors_for",
-                            lambda ids: {c: [(sims or {}).get(c, 0.0)] for c in ids})
+        # Two dimensions, so cosine against QV actually returns the intended
+        # score. A single dimension does NOT work: cosine of any two 1-D vectors
+        # is 1.0, so every candidate tied and the ordering assertions below were
+        # silently passing on insertion order instead of similarity.
+        def fake_vectors(ids):
+            out = {}
+            for c in ids:
+                s = (sims or {}).get(c, 0.0)
+                out[c] = [s, max(0.0, 1.0 - s * s) ** 0.5]
+            return out
+        monkeypatch.setattr("src.search._vectors_for", fake_vectors)
 
     @staticmethod
     def _chunk(cid, count=1, entry=None):
         return {"chunk_id": cid, "entry_id": entry or cid.split("#")[0],
                 "entry_date": "2019-08-19", "text": "x", "_count": count}
 
-    QV = [1.0]
+    QV = [1.0, 0.0]
 
     def test_similarity_decides_not_mention_count(self, monkeypatch):
         from src.search import rare_term_hits
@@ -222,8 +230,35 @@ class TestRareTermRanking:
         assert rare_term_hits("the and of it", limit=2, qv=self.QV) == []
 
     def test_limit_is_respected(self, monkeypatch):
+        """Clearly-separated candidates stop at the limit."""
         from src.search import rare_term_hits
         self._stub(monkeypatch,
                    {"alpha": [self._chunk(f"a{i}#0", entry=f"e{i}")
-                              for i in range(5)]})
+                              for i in range(5)]},
+                   sims={f"a{i}#0": 0.9 - i * 0.2 for i in range(5)})
         assert len(rare_term_hits("alpha", limit=2, qv=self.QV)) == 2
+
+    def test_a_near_tie_at_the_boundary_is_kept(self, monkeypatch):
+        """A candidate indistinguishable from the last admitted one survives.
+
+        Three entries once held a rare term at 0.3668, 0.32823 and 0.32805. With
+        two slots the third — the only correct one — lost by 0.00018. That is an
+        arbitrary cut, not a selective one.
+        """
+        from src.search import rare_term_hits
+        self._stub(monkeypatch,
+                   {"alpha": [self._chunk("a#0", entry="a"),
+                              self._chunk("b#0", entry="b"),
+                              self._chunk("c#0", entry="c")]},
+                   sims={"a#0": 0.3668, "b#0": 0.32823, "c#0": 0.32805})
+        got = [r["chunk_id"] for r in rare_term_hits("alpha", limit=2, qv=self.QV)]
+        assert got == ["a#0", "b#0", "c#0"]
+
+    def test_the_exception_is_bounded(self, monkeypatch):
+        """A cluster of ties must not flood the window."""
+        from src.search import rare_term_hits
+        self._stub(monkeypatch,
+                   {"alpha": [self._chunk(f"a{i}#0", entry=f"e{i}")
+                              for i in range(6)]},
+                   sims={f"a{i}#0": 0.5 for i in range(6)})
+        assert len(rare_term_hits("alpha", limit=2, qv=self.QV)) == 3

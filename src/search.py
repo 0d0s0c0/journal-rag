@@ -97,6 +97,13 @@ def detect_year(query: str) -> int | None:
 # percentage: what matters is "few enough to read", not a share of the corpus.
 RARE_ENTRY_MAX = 10
 
+# Similarities closer than this are not a real distinction. Used only to decide
+# whether a candidate just past the slot limit is worth keeping anyway.
+RARE_SIM_EPS = 0.005
+
+# How far past `limit` the epsilon may reach. Bounds the exception.
+RARE_SLACK = 1
+
 
 def _cosine(a, b) -> float:
     dot = sum(x * y for x, y in zip(a, b))
@@ -218,14 +225,35 @@ def rare_term_hits(query: str, limit: int, year: int | None = None,
     # similarity alone did exactly that, spending both slots on a single day.
     out: list[dict] = []
     entries: set[str] = set()
-    for e in sorted(by_chunk.values(), key=lambda e: (-len(e["terms"]), -e["sim"])):
+    ranked = sorted(by_chunk.values(), key=lambda e: (-len(e["terms"]), -e["sim"]))
+    for e in ranked:
         eid = e["row"]["entry_id"]
         if eid in entries:
             continue
+        # Past the limit, keep going only while a candidate is INDISTINGUISHABLE
+        # from the last one admitted. A hard cut was deciding on margins far too
+        # fine to mean anything: three entries contained one rare term at
+        # similarities 0.3668, 0.32823 and 0.32805, and with two slots the third
+        # — the only correct one — lost by 0.00018. Discarding a candidate that
+        # close to one you kept is arbitrary, not selective.
+        if len(out) >= limit:
+            # Bounded: the exception exists to avoid an arbitrary cut, not to
+            # let a cluster of tied candidates flood the window. Without a cap,
+            # five equally-scored candidates all got through and crowded out the
+            # ranked results the slots are only meant to supplement.
+            if len(out) >= limit + RARE_SLACK:
+                break
+            # Only forgive a near-tie WITHIN the same coverage tier. Comparing
+            # similarity across tiers let a single-term candidate with a higher
+            # embedding score override the term-coverage ordering, which is the
+            # opposite of what coverage-first means.
+            last = out[-1]
+            if len(e["terms"]) != len(last["_rare_terms"]):
+                break
+            if e["sim"] < last["_rare_sim"] - RARE_SIM_EPS:
+                break
         entries.add(eid)
         out.append(emit(e))
-        if len(out) >= limit:
-            break
     return out
 
 
