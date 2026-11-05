@@ -157,7 +157,7 @@ class TestRareTermRanking:
                     to an unrelated entry. Flipped an answerable question from
                     cited 4/4 to refused 4/4.
       mention count   a useless tiebreak for a noun. All nine entries containing
-                    "certificate" mentioned it exactly once, so the slots went
+                    that word mentioned it exactly once, so the slots went
                     to the first two by date and the right entry got nothing.
       same entry    ranking by similarity alone spent both slots on two chunks
                     of a single day, surfacing one entry instead of two.

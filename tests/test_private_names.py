@@ -37,9 +37,9 @@ class TestQuestionParsing:
                      "the time I flew to the moon | NONE\n"
                      "two answers | 2019-08-19, 2020-01-04 | NOT 2021-05-05\n")
         assert read_questions(f) == [
-            ("the day the gramophone broke", False),
-            ("the time I flew to the moon", True),
-            ("two answers", False),
+            ("the day the gramophone broke", False, []),
+            ("the time I flew to the moon", True, []),
+            ("two answers", False, []),
         ]
 
     def test_missing_file_is_not_an_error(self, tmp_path):
@@ -49,44 +49,50 @@ class TestQuestionParsing:
 class TestPhrases:
     def test_whole_question_becomes_a_phrase(self):
         phrases, _ = collect_phrases(
-            [("the day a stranger repaired the gramophone", False)], [])
+            [("the day a stranger repaired the gramophone", False, [])], [])
         assert "the day a stranger repaired the gramophone" in phrases
 
     def test_adjacent_content_words_become_a_phrase(self):
         # Neither word is rare on its own; together they name an episode. This
         # is the case single-word blocking cannot catch.
-        phrases, _ = collect_phrases([("the glass orangery at the inn", False)], [])
+        phrases, _ = collect_phrases(
+            [("the glass orangery at the inn", False, [])], [])
         assert "glass orangery" in phrases
 
     def test_absent_questions_are_skipped(self):
         # Things that never happened are not archive content, and blocking them
         # would reject this project's own writing about refusal testing.
-        phrases, words = collect_phrases([("the time I climbed Everest", True)], [])
+        phrases, words = collect_phrases(
+            [("the time I climbed Everest", True, [])], [])
         assert phrases == set() and words == set()
 
     def test_very_short_phrases_are_dropped(self):
         # A one-word question is handled by the word list, not here; a short
         # phrase would match far too much ordinary prose.
-        phrases, _ = collect_phrases([("Margarethe", False)], [])
+        phrases, _ = collect_phrases(
+            [("Margarethe", False, [])], [])
         assert not any(len(p) <= 8 for p in phrases)
 
 
 class TestIdentifyingWords:
     def test_a_rare_word_is_identifying(self):
         entries = [entry("we ate a quenelle")] + [entry("nothing here") for _ in range(50)]
-        _, words = collect_phrases([("the time I ate a quenelle", False)], entries)
+        _, words = collect_phrases(
+            [("the time I ate a quenelle", False, [])], entries)
         assert "quenelle" in words
 
     def test_a_common_word_is_not(self):
         # Appearing in many entries means the word describes a category, not an
         # episode. Blocking it would reject ordinary documentation.
         entries = [entry("the gramophone again") for _ in range(IDENTIFYING_MAX_ENTRIES + 5)]
-        _, words = collect_phrases([("the gramophone repair", False)], entries)
+        _, words = collect_phrases(
+            [("the gramophone repair", False, [])], entries)
         assert "gramophone" not in words
 
     def test_a_word_absent_from_the_archive_is_not_blocked(self):
         # The asker's own paraphrase ("accidently") is not journal content.
-        _, words = collect_phrases([("the inn where i accidently paid", False)],
+        _, words = collect_phrases(
+            [("the inn where i accidently paid", False, [])],
                                    [entry("unrelated")])
         assert "accidently" not in words
 
@@ -94,7 +100,8 @@ class TestIdentifyingWords:
         # Guarded by NOT_IDENTIFYING: these are rare in a small corpus by luck,
         # not because they name anything.
         entries = [entry("the phone and the shop")]
-        _, words = collect_phrases([("the shop where I lost my phone", False)], entries)
+        _, words = collect_phrases(
+            [("the shop where I lost my phone", False, [])], entries)
         assert not ({"phone", "shop", "lost"} & words)
 
 
@@ -141,3 +148,40 @@ class TestReconstructedCoverage:
         entries = [entry("x", "2019-08-19")]
         chunks = [{"entry_id": "r", "entry_date": "2043-01-25"}]
         assert collect_dates(entries, chunks) == {"2019-08-19", "2043-01-25"}
+
+
+class TestSaysHarvesting:
+    """SAYS fields are verbatim journal wording and must be blocked too.
+
+    Found the hard way: a monastery name occurring in exactly one entry lived
+    only in a question's SAYS field. collect_phrases read question TEXT only, so
+    the name was in no blocklist, and it reached a committed test fixture four
+    times before anyone noticed. The hook could not have caught it.
+    """
+
+    def test_a_rare_says_word_is_blocked(self):
+        entries = [entry("we reached Vespugia")] + [entry("x") for _ in range(50)]
+        _, words = collect_phrases(
+            [("which places did I reach", False, ["Vespugia"])], entries)
+        assert "vespugia" in words
+
+    def test_a_rare_says_phrase_is_blocked_as_a_phrase(self):
+        entries = [entry("a bowl of zarzuela")] + [entry("x") for _ in range(50)]
+        phrases, words = collect_phrases(
+            [("what did I eat", False, ["a zarzuela"])], entries)
+        assert "a zarzuela" in phrases and "a zarzuela" not in words
+
+    def test_a_common_says_word_is_not_blocked(self):
+        # Blocking an ordinary food word would fire on normal prose, and a hook
+        # that cries wolf gets bypassed — which is worse than not having one.
+        entries = [entry("quenelle again") for _ in range(IDENTIFYING_MAX_ENTRIES + 5)]
+        _, words = collect_phrases(
+            [("the time I ate a quenelle", False, ["quenelle"])], entries)
+        assert "quenelle" not in words
+
+    def test_says_from_an_absent_question_is_ignored(self):
+        # A question about something that never happened describes a non-event,
+        # so its wording is not archive content.
+        phrases, words = collect_phrases(
+            [("the time I climbed Everest", True, ["Everest"])], [entry("x")])
+        assert phrases == set() and words == set()

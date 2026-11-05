@@ -112,9 +112,17 @@ def collect_dates(*sources: list[dict]) -> set[str]:
             if row.get("entry_date")}
 
 
-def read_questions(path: Path) -> list[tuple[str, bool]]:
-    """(question, is_absent) pairs. Parsed here rather than imported from
-    evaluate so this stays a plain-stdlib script with no index dependency."""
+def read_questions(path: Path) -> list[tuple[str, bool, list[str]]]:
+    """(question, is_absent, says) triples.
+
+    Parsed here rather than imported from evaluate so this stays a plain-stdlib
+    script with no index dependency.
+
+    The `says` field matters as much as the question text. It holds exact
+    strings lifted from the journal and chosen BECAUSE they are distinctive —
+    a monastery name appearing in one entry sat only there, was therefore in no
+    blocklist, and reached a test fixture unnoticed.
+    """
     if not path.exists():
         return []
     out = []
@@ -125,11 +133,16 @@ def read_questions(path: Path) -> list[tuple[str, bool]]:
         parts = [p.strip() for p in line.split("|")]
         question = parts[0]
         answers = parts[1] if len(parts) > 1 else ""
-        out.append((question, answers.upper() == "NONE"))
+        says: list[str] = []
+        for field in parts[2:]:
+            if field.upper().startswith("SAYS"):
+                body = field[4:].lstrip(": ")
+                says = [a.strip().strip('"') for a in body.split(",") if a.strip()]
+        out.append((question, answers.upper() == "NONE", says))
     return out
 
 
-def collect_phrases(questions: list[tuple[str, bool]],
+def collect_phrases(questions: list[tuple[str, bool, list[str]]],
                     entries: list[dict]) -> tuple[set[str], set[str]]:
     """(multi-word phrases, single identifying words) from the eval questions.
 
@@ -145,10 +158,22 @@ def collect_phrases(questions: list[tuple[str, bool]],
     phrases: set[str] = set()
     words: set[str] = set()
 
-    for q, absent in questions:
+    for q, absent, says in questions:
         if absent:
             continue
         phrases.add(q.strip().lower())
+
+        # SAYS strings are verbatim journal wording. Only the RARE ones are
+        # blocked: a term in a handful of entries identifies one of them, while
+        # blocking an ordinary food word would make the hook cry wolf, and a
+        # hook that cries wolf gets bypassed.
+        for t in says:
+            t = t.strip().lower()
+            if not t or t in TOO_GENERIC or t in NOT_IDENTIFYING:
+                continue
+            if entries_containing(t) > IDENTIFYING_MAX_ENTRIES:
+                continue
+            (phrases if " " in t else words).add(t)
 
         tokens = re.findall(r"[a-z0-9']+", q.lower())
         content = [t for t in tokens if t not in STOP and len(t) > 3]

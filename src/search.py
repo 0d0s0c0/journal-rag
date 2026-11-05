@@ -176,9 +176,9 @@ def rare_term_hits(query: str, limit: int, year: int | None = None,
 
     # Rank by HOW MANY of the query's rare terms a chunk contains, before how
     # often. Taking them in query order instead was measurably wrong: for
-    # "monasteries i stayed at on Mt Vespugia" both "monasteries" (8 entries)
-    # and the place name (8) qualify, the first encountered took both slots, one
-    # went to an entry about monasteries in an entirely different country. That
+    # a two-part query naming both a category and a place, both rare (8 entries
+    # each), the first encountered took both slots, and one went to an entry
+    # about the same category in an entirely different country. That
     # displaced two ranked results and turned an answer the model had been giving
     # 4 times out of 4 into a refusal 4 times out of 4.
     #
